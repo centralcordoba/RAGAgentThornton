@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "value": "regwatch"
+    },
+    "environment": {
+      "value": "dev"
+    },
+    "pgAdminLogin": {
+      "value": "regwatchadmin"
+    },
+    "pgAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault-name>"
+        },
+        "secretName": "pg-admin-password"
+      }
+    },
+    "neo4jUri": {
+      "value": "bolt://<neo4j-host>:7687"
+    },
+    "neo4jPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault-name>"
+        },
+        "secretName": "neo4j-password"
+      }
+    }
+  }
+}

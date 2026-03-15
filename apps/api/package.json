@@ -1,0 +1,49 @@
+{
+  "name": "@regwatch/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.2.0",
+    "@azure/keyvault-secrets": "^4.8.0",
+    "@azure/service-bus": "^7.9.0",
+    "@azure/communication-email": "^1.0.0",
+    "@azure/monitor-opentelemetry-exporter": "^1.0.0-beta.24",
+    "@langchain/azure-openai": "^0.1.0",
+    "@langchain/community": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "@prisma/client": "^5.18.0",
+    "@regwatch/ai-core": "*",
+    "@regwatch/shared": "*",
+    "cors": "^2.8.5",
+    "express": "^4.19.0",
+    "express-rate-limit": "^7.3.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "neo4j-driver": "^5.22.0",
+    "pino": "^9.3.0",
+    "pino-http": "^10.2.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.0",
+    "@types/supertest": "^6.0.2",
+    "prisma": "^5.18.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

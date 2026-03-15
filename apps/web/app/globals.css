@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-primary: #1E3A5F;
+    --brand-secondary: #3f67a1;
+    --risk-low: #10b981;
+    --risk-medium: #f59e0b;
+    --risk-high: #dc2626;
+    --sidebar-width: 260px;
+    --sidebar-collapsed-width: 64px;
+    --header-height: 56px;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+
+  .card-header {
+    @apply px-5 py-4 border-b border-gray-100;
+  }
+
+  .card-body {
+    @apply px-5 py-4;
+  }
+
+  .btn-primary {
+    @apply bg-brand-800 text-white px-4 py-2 rounded-md text-sm font-medium
+           hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-brand-800 border border-brand-800 px-4 py-2 rounded-md text-sm font-medium
+           hover:bg-brand-50 transition-colors disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply bg-risk-high text-white px-4 py-2 rounded-md text-sm font-medium
+           hover:bg-red-700 transition-colors;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md text-sm
+           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
+           placeholder:text-gray-400;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+}

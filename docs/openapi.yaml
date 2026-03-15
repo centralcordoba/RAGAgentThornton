@@ -1,0 +1,1066 @@
+openapi: 3.1.0
+info:
+  title: RegWatch AI API
+  description: |
+    Regulatory monitoring platform for Grant Thornton.
+    Provides regulatory change tracking, AI-powered compliance analysis,
+    conversational RAG queries, and alert management with Human-in-the-Loop review.
+  version: 0.1.0
+  contact:
+    name: RegWatch AI Team
+    email: regwatch@grantthornton.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://ca-api-regwatch-staging.{domain}
+    description: Staging
+    variables:
+      domain:
+        default: azurecontainerapps.io
+  - url: https://ca-api-regwatch-prod.{domain}
+    description: Production
+    variables:
+      domain:
+        default: azurecontainerapps.io
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Health
+    description: Service health and readiness
+  - name: Ingestion
+    description: Regulatory document ingestion pipeline
+  - name: Regulations
+    description: Regulatory changes listing and detail
+  - name: Clients
+    description: Client management and onboarding
+  - name: Chat
+    description: Conversational RAG-powered queries
+  - name: Alerts
+    description: Alert management and HITL review
+
+paths:
+  # -------------------------------------------------------------------------
+  # Health
+  # -------------------------------------------------------------------------
+  /api/health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Health check
+      description: Returns service health status including downstream dependencies.
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+  # -------------------------------------------------------------------------
+  # Ingestion
+  # -------------------------------------------------------------------------
+  /api/ingest/trigger:
+    post:
+      operationId: triggerIngestion
+      tags: [Ingestion]
+      summary: Trigger manual ingestion
+      description: |
+        Triggers manual ingestion for specified sources or countries.
+        If no filters are provided, runs all active sources.
+        Ingestion is idempotent — duplicate documents are skipped silently.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerIngestionRequest'
+      responses:
+        '202':
+          description: Ingestion triggered — processing asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerIngestionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # -------------------------------------------------------------------------
+  # Regulations
+  # -------------------------------------------------------------------------
+  /api/regulations:
+    get:
+      operationId: listRegulations
+      tags: [Regulations]
+      summary: List recent regulatory changes
+      description: Returns paginated list of regulatory changes with optional filters.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: country
+          in: query
+          description: ISO 3166-1 alpha-2 country code
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: US
+        - name: area
+          in: query
+          description: Affected regulatory area
+          schema:
+            type: string
+            example: banking
+        - name: impactLevel
+          in: query
+          schema:
+            $ref: '#/components/schemas/ImpactLevel'
+        - name: dateFrom
+          in: query
+          description: Filter changes published on or after this date
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          description: Filter changes published on or before this date
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated list of regulatory changes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRegulations'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/regulations/{id}:
+    get:
+      operationId: getRegulation
+      tags: [Regulations]
+      summary: Get regulatory change detail with AI analysis
+      description: |
+        Returns full regulatory change details including GT AI analysis,
+        confidence score, and impacted obligations.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Regulatory change with AI analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegulationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # -------------------------------------------------------------------------
+  # Clients
+  # -------------------------------------------------------------------------
+  /api/clients:
+    get:
+      operationId: listClients
+      tags: [Clients]
+      summary: List clients
+      description: Returns paginated list of clients within the caller's tenant.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Paginated list of clients
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedClients'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      operationId: createClient
+      tags: [Clients]
+      summary: Create client
+      description: |
+        Creates a new client and triggers onboarding which builds
+        the ComplianceMap in the knowledge graph.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientRequest'
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/clients/{id}/dashboard:
+    get:
+      operationId: getClientDashboard
+      tags: [Clients]
+      summary: Client compliance dashboard
+      description: |
+        Returns compliance score, obligation breakdown, recent changes,
+        pending alerts, and upcoming deadlines for a specific client.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Client dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientDashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/clients/{id}/graph:
+    get:
+      operationId: getClientGraph
+      tags: [Clients]
+      summary: Client obligation graph
+      description: |
+        Returns the ComplianceGraph subgraph for a specific client,
+        including jurisdiction, obligation, and deadline nodes.
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - name: depth
+          in: query
+          description: Maximum traversal depth from client node
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+            default: 3
+      responses:
+        '200':
+          description: Client compliance graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceGraph'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # -------------------------------------------------------------------------
+  # Chat (RAG)
+  # -------------------------------------------------------------------------
+  /api/chat:
+    post:
+      operationId: chat
+      tags: [Chat]
+      summary: Conversational compliance query
+      description: |
+        Sends a natural language question to the RAG pipeline.
+        Flow: Redis cache check → Azure AI Search hybrid → Azure OpenAI → cache result.
+        If confidence < 0.5, returns "insufficient data" — never fabricates regulations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: AI-generated compliance analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # -------------------------------------------------------------------------
+  # Alerts
+  # -------------------------------------------------------------------------
+  /api/alerts:
+    get:
+      operationId: listAlerts
+      tags: [Alerts]
+      summary: List alerts
+      description: |
+        Returns paginated list of alerts. Professionals see alerts
+        pending review (HITL). Client viewers see only sent/acknowledged alerts.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: clientId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AlertStatus'
+        - name: impactLevel
+          in: query
+          schema:
+            $ref: '#/components/schemas/ImpactLevel'
+        - name: channel
+          in: query
+          schema:
+            $ref: '#/components/schemas/AlertChannel'
+      responses:
+        '200':
+          description: Paginated list of alerts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAlerts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/alerts/{id}/ack:
+    post:
+      operationId: acknowledgeAlert
+      tags: [Alerts]
+      summary: Acknowledge alert
+      description: |
+        Marks an alert as acknowledged by the recipient.
+        For HIGH impact alerts in PENDING_REVIEW status, this endpoint is used
+        by GT Professionals to approve the alert for client delivery (HITL flow).
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcknowledgeAlertRequest'
+      responses:
+        '200':
+          description: Alert acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+# =============================================================================
+# Components
+# =============================================================================
+components:
+
+  # ---------------------------------------------------------------------------
+  # Security
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token with claims: userId, tenantId, role (ADMIN | PROFESSIONAL | CLIENT_VIEWER).
+        All endpoints (except /api/health) require authentication.
+        Tenant isolation is enforced — requests can only access data within their tenantId.
+
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  # ---------------------------------------------------------------------------
+  # Responses (errors)
+  # ---------------------------------------------------------------------------
+  responses:
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: VALIDATION_ERROR
+            message: Request validation failed
+            requestId: req_abc123
+            details:
+              issues:
+                - path: [countries, 0]
+                  message: String must contain exactly 2 character(s)
+
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: UNAUTHORIZED
+            message: Unauthorized
+            requestId: req_abc123
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: FORBIDDEN
+            message: Forbidden
+            requestId: req_abc123
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: NOT_FOUND
+            message: "Regulation with id 'abc-123' not found"
+            requestId: req_abc123
+
+    Conflict:
+      description: Resource conflict (duplicate)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: CONFLICT
+            message: Client with this name already exists
+            requestId: req_abc123
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppError'
+          example:
+            code: RATE_LIMITED
+            message: Rate limit exceeded
+            requestId: req_abc123
+            details:
+              retryAfterMs: 60000
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    # -- Enums ---------------------------------------------------------------
+    ImpactLevel:
+      type: string
+      enum: [HIGH, MEDIUM, LOW]
+
+    AlertChannel:
+      type: string
+      enum: [EMAIL, TEAMS, SSE]
+
+    AlertStatus:
+      type: string
+      enum: [PENDING_REVIEW, APPROVED, SENT, ACKNOWLEDGED, DISMISSED]
+
+    ObligationStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE, WAIVED]
+
+    ComplianceNodeType:
+      type: string
+      enum: [JURISDICTION, COMPANY_TYPE, OBLIGATION, DEADLINE, REGULATOR, REGULATION, INDUSTRY]
+
+    # -- Error ---------------------------------------------------------------
+    AppError:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+        requestId:
+          type: string
+          description: Unique request identifier for tracing
+        details:
+          description: Additional error context
+
+    # -- Health --------------------------------------------------------------
+    HealthCheckResponse:
+      type: object
+      required: [status, version, timestamp, services]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+          example: 0.1.0
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ServiceHealth'
+
+    ServiceHealth:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [up, down, degraded]
+        latencyMs:
+          type: number
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+    # -- Ingestion -----------------------------------------------------------
+    TriggerIngestionRequest:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            type: string
+          description: Source identifiers to trigger (e.g. SEC_EDGAR, EUR_LEX)
+        countries:
+          type: array
+          items:
+            type: string
+            minLength: 2
+            maxLength: 2
+          description: ISO 3166-1 alpha-2 codes
+
+    TriggerIngestionResponse:
+      type: object
+      required: [jobId, status, sourcesTriggered]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted]
+        sourcesTriggered:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+          example: Ingestion triggered for 3 sources
+
+    # -- Regulations ---------------------------------------------------------
+    RegulatoryChange:
+      type: object
+      required: [id, sourceId, title, summary, effectiveDate, impactLevel, affectedAreas, country]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+        externalDocumentId:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        effectiveDate:
+          type: string
+          format: date
+        publishedDate:
+          type: string
+          format: date
+        impactLevel:
+          $ref: '#/components/schemas/ImpactLevel'
+        affectedAreas:
+          type: array
+          items:
+            type: string
+        affectedIndustries:
+          type: array
+          items:
+            type: string
+        country:
+          type: string
+        jurisdiction:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+
+    RegulationDetail:
+      type: object
+      required: [regulation, analysis]
+      properties:
+        regulation:
+          $ref: '#/components/schemas/RegulatoryChange'
+        analysis:
+          $ref: '#/components/schemas/AIAnalysis'
+
+    PaginatedRegulations:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RegulatoryChange'
+
+    # -- Clients -------------------------------------------------------------
+    Client:
+      type: object
+      required: [id, tenantId, name, countries, companyType, industries, contactEmail]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        countries:
+          type: array
+          items:
+            type: string
+        companyType:
+          type: string
+        industries:
+          type: array
+          items:
+            type: string
+        contactEmail:
+          type: string
+          format: email
+        isActive:
+          type: boolean
+        onboardedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateClientRequest:
+      type: object
+      required: [name, countries, companyType, industries, contactEmail]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        countries:
+          type: array
+          items:
+            type: string
+            minLength: 2
+            maxLength: 2
+          minItems: 1
+        companyType:
+          type: string
+          minLength: 1
+          maxLength: 100
+        industries:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        contactEmail:
+          type: string
+          format: email
+
+    PaginatedClients:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Client'
+
+    # -- Dashboard -----------------------------------------------------------
+    ClientDashboard:
+      type: object
+      required: [clientId, complianceScore, totalObligations, obligationsByStatus]
+      properties:
+        clientId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        complianceScore:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Percentage of obligations completed on time
+        totalObligations:
+          type: integer
+        obligationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        recentChanges:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegulatoryChange'
+        pendingAlerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+        upcomingDeadlines:
+          type: array
+          items:
+            $ref: '#/components/schemas/Obligation'
+
+    # -- Graph ---------------------------------------------------------------
+    ComplianceNode:
+      type: object
+      required: [id, type, label, properties]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: '#/components/schemas/ComplianceNodeType'
+        label:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+
+    ComplianceEdge:
+      type: object
+      required: [id, sourceNodeId, targetNodeId, relationship]
+      properties:
+        id:
+          type: string
+        sourceNodeId:
+          type: string
+        targetNodeId:
+          type: string
+        relationship:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+
+    ComplianceGraph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceEdge'
+
+    # -- Chat ----------------------------------------------------------------
+    ChatRequest:
+      type: object
+      required: [clientId, message]
+      properties:
+        clientId:
+          type: string
+          format: uuid
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        conversationId:
+          type: string
+          format: uuid
+          nullable: true
+        filters:
+          type: object
+          nullable: true
+          properties:
+            countries:
+              type: array
+              items:
+                type: string
+              nullable: true
+            industries:
+              type: array
+              items:
+                type: string
+              nullable: true
+            impactLevel:
+              $ref: '#/components/schemas/ImpactLevel'
+            dateFrom:
+              type: string
+              format: date
+              nullable: true
+            dateTo:
+              type: string
+              format: date
+              nullable: true
+
+    AIAnalysis:
+      type: object
+      required: [answer, sources, confidence, reasoning, impactedObligations]
+      properties:
+        answer:
+          type: string
+          description: AI-generated answer. Returns "insufficient data" if confidence < 0.5
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AISource'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence score. Below 0.5 triggers "insufficient data" response
+        reasoning:
+          type: string
+        impactedObligations:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AISource:
+      type: object
+      required: [documentId, title, relevanceScore, snippet, sourceUrl]
+      properties:
+        documentId:
+          type: string
+        title:
+          type: string
+        relevanceScore:
+          type: number
+          minimum: 0
+          maximum: 1
+        snippet:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+
+    ChatResponse:
+      type: object
+      required: [conversationId, analysis, relatedObligations, cached]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        analysis:
+          $ref: '#/components/schemas/AIAnalysis'
+        relatedObligations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Obligation'
+        cached:
+          type: boolean
+          description: Whether this response was served from Redis cache
+
+    # -- Alerts --------------------------------------------------------------
+    Alert:
+      type: object
+      required: [id, clientId, tenantId, changeId, message, channel, status, impactLevel, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        changeId:
+          type: string
+          format: uuid
+        obligationId:
+          type: string
+          format: uuid
+          nullable: true
+        message:
+          type: string
+        channel:
+          $ref: '#/components/schemas/AlertChannel'
+        status:
+          $ref: '#/components/schemas/AlertStatus'
+        impactLevel:
+          $ref: '#/components/schemas/ImpactLevel'
+        reviewedBy:
+          type: string
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        acknowledgedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AcknowledgeAlertRequest:
+      type: object
+      required: [acknowledgedBy]
+      properties:
+        acknowledgedBy:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          maxLength: 1000
+
+    PaginatedAlerts:
+      allOf:
+        - $ref: '#/components/schemas/PaginatedResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Alert'
+
+    # -- Obligations ---------------------------------------------------------
+    Obligation:
+      type: object
+      required: [id, clientId, tenantId, changeId, title, deadline, status, priority]
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        changeId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/ObligationStatus'
+        assignedTo:
+          type: string
+        priority:
+          $ref: '#/components/schemas/ImpactLevel'
+        createdAt:
+          type: string
+          format: date-time
+
+    # -- Shared --------------------------------------------------------------
+    PaginatedResponse:
+      type: object
+      required: [data, total, page, pageSize, hasMore]
+      properties:
+        data:
+          type: array
+          items: {}
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasMore:
+          type: boolean
