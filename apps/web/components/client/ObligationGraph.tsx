@@ -55,7 +55,7 @@ interface ObligationGraphProps {
 // ---------------------------------------------------------------------------
 
 const NODE_COLORS: Record<string, string> = {
-  client: '#1E3A5F',
+  client: '#4F2D7F',
   country: '#3b82f6',
   obligation: '#6b7280',
   deadline: '#f59e0b',
@@ -154,7 +154,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
       .force('link', d3.forceLink<D3Node, D3Link>(d3Links).id((d) => d.id).distance(80))
       .force('charge', d3.forceManyBody().strength(-200))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d) => NODE_SIZES[(d as D3Node).type] + 5));
+      .force('collision', d3.forceCollide().radius((d) => (NODE_SIZES[(d as D3Node).type] ?? 10) + 5));
 
     // Links
     const link = g.append('g')
@@ -201,7 +201,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
 
     // Node circles
     node.append('circle')
-      .attr('r', (d) => NODE_SIZES[d.type])
+      .attr('r', (d) => NODE_SIZES[d.type] ?? 10)
       .attr('fill', (d) => {
         if (d.status && STATUS_COLORS[d.status]) return STATUS_COLORS[d.status]!;
         return NODE_COLORS[d.type] ?? '#6b7280';
@@ -216,7 +216,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
     node.append('text')
       .text((d) => truncate(d.label, 16))
       .attr('text-anchor', 'middle')
-      .attr('dy', (d) => NODE_SIZES[d.type] + 12)
+      .attr('dy', (d) => (NODE_SIZES[d.type] ?? 10) + 12)
       .attr('font-size', 9)
       .attr('fill', '#374151')
       .attr('font-weight', (d) => (d.type === 'client' ? 'bold' : 'normal'));
@@ -226,7 +226,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
       .text((d) => NODE_ICONS[d.type] ?? '')
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
-      .attr('font-size', (d) => NODE_SIZES[d.type] * 0.8);
+      .attr('font-size', (d) => (NODE_SIZES[d.type] ?? 10) * 0.8);
 
     // Tick
     simulation.on('tick', () => {
@@ -258,7 +258,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
           <button
             onClick={() => setAreaFilter(null)}
             className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-              !areaFilter ? 'bg-brand-800 text-white border-brand-800' : 'border-gray-200 text-gray-500'
+              !areaFilter ? 'bg-brand-700 text-white border-brand-700' : 'border-gray-200 text-gray-500'
             }`}
           >
             Todos
@@ -268,7 +268,7 @@ export function ObligationGraph({ nodes, edges, onNodeClick }: ObligationGraphPr
               key={area}
               onClick={() => setAreaFilter(areaFilter === area ? null : area)}
               className={`px-2 py-0.5 text-xs rounded-full border transition-colors capitalize ${
-                areaFilter === area ? 'bg-brand-800 text-white border-brand-800' : 'border-gray-200 text-gray-500'
+                areaFilter === area ? 'bg-brand-700 text-white border-brand-700' : 'border-gray-200 text-gray-500'
               }`}
             >
               {area}

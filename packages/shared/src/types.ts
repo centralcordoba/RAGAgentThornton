@@ -325,6 +325,74 @@ export interface ClientDashboard {
 }
 
 // ---------------------------------------------------------------------------
+// Regulatory Source Management (Phase 7)
+// ---------------------------------------------------------------------------
+
+export type SourceConnectorType = 'API' | 'RSS' | 'SCRAPING';
+
+export type SourceStatus = 'OK' | 'WARNING' | 'ERROR';
+
+export interface ManagedRegulatorySource {
+  readonly id: string;
+  readonly name: string;
+  readonly country: string;
+  readonly type: SourceConnectorType;
+  readonly status: SourceStatus;
+  readonly lastFetch: Date | null;
+  readonly docsIndexed: number;
+  readonly lastError: string | null;
+  readonly frequency: 'every_10min' | 'hourly' | 'daily';
+  readonly active: boolean;
+  readonly baseUrl: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly regulatoryArea: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface CreateSourceInput {
+  readonly name: string;
+  readonly country: string;
+  readonly type: SourceConnectorType;
+  readonly frequency: 'every_10min' | 'hourly' | 'daily';
+  readonly baseUrl: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly regulatoryArea: string;
+}
+
+export interface SourceTestResult {
+  readonly success: boolean;
+  readonly statusCode: number | null;
+  readonly errorMessage: string | null;
+  readonly preview: readonly SourcePreviewDoc[];
+}
+
+export interface SourcePreviewDoc {
+  readonly title: string;
+  readonly date: string;
+  readonly url: string;
+  readonly snippet: string;
+}
+
+export interface SourceTriggerEvent {
+  readonly event:
+    | 'fetch_start'
+    | 'docs_fetched'
+    | 'changes_detected'
+    | 'embeddings_generated'
+    | 'alerts_triggered'
+    | 'complete';
+  readonly source: string;
+  readonly timestamp: string;
+  readonly count?: number;
+  readonly cached?: number;
+  readonly impactLevel?: ImpactLevel;
+  readonly duration_ms?: number;
+  readonly status?: 'OK' | 'ERROR';
+  readonly error?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Ingestion Job
 // ---------------------------------------------------------------------------
 

@@ -42,7 +42,7 @@ export function ChatMessage({ message }: { message: ChatMessageData }) {
       {/* Avatar */}
       <div
         className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-sm ${
-          isUser ? 'bg-brand-800 text-white' : 'bg-gray-100 text-gray-600'
+          isUser ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-600'
         }`}
       >
         {isUser ? '👤' : '🤖'}
@@ -53,7 +53,7 @@ export function ChatMessage({ message }: { message: ChatMessageData }) {
         <div
           className={`rounded-xl px-4 py-2.5 text-sm ${
             isUser
-              ? 'bg-brand-800 text-white rounded-br-sm'
+              ? 'bg-brand-700 text-white rounded-br-sm'
               : 'bg-gray-100 text-gray-900 rounded-bl-sm'
           }`}
         >

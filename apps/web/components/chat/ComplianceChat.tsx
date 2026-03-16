@@ -298,7 +298,7 @@ export function ComplianceChat({
   return (
     <div className="fixed right-0 top-0 bottom-0 w-[420px] bg-white border-l border-gray-200 shadow-xl z-50 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-brand-800 text-white">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-brand-700 text-white">
         <div>
           <h2 className="text-sm font-semibold">Asistente de Compliance</h2>
           <p className="text-xs text-brand-200">

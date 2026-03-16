@@ -10,7 +10,7 @@ import { Header } from '@/components/ui/Header';
 import { ChatProvider } from '@/components/chat/ChatProvider';
 
 export const metadata: Metadata = {
-  title: 'RegWatch AI — Grant Thornton',
+  title: 'Grant Thornton — Regulatory Monitoring',
   description: 'Regulatory monitoring platform for Grant Thornton',
 };
 

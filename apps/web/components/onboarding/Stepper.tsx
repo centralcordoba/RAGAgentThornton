@@ -30,7 +30,7 @@ export function Stepper({ steps, currentStep }: StepperProps) {
                   status === 'complete'
                     ? 'bg-risk-low text-white'
                     : status === 'current'
-                      ? 'bg-brand-800 text-white ring-4 ring-brand-100'
+                      ? 'bg-brand-700 text-white ring-4 ring-brand-100'
                       : 'bg-gray-100 text-gray-400'
                 }`}
               >
@@ -38,7 +38,7 @@ export function Stepper({ steps, currentStep }: StepperProps) {
               </div>
               <span
                 className={`text-xs font-medium ${
-                  status === 'current' ? 'text-brand-800' : 'text-gray-400'
+                  status === 'current' ? 'text-brand-700' : 'text-gray-400'
                 }`}
               >
                 {step.label}

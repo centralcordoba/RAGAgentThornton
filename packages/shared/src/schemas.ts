@@ -97,6 +97,36 @@ export const ListAlertsSchema = z.object({
 }).merge(PaginationSchema);
 
 // ---------------------------------------------------------------------------
+// Source Management (Phase 7)
+// ---------------------------------------------------------------------------
+
+export const SourceConnectorTypeSchema = z.enum(['API', 'RSS', 'SCRAPING']);
+
+export const SourceFrequencySchema = z.enum(['every_10min', 'hourly', 'daily']);
+
+export const CreateSourceSchema = z.object({
+  name: z.string().min(1).max(255),
+  country: z.string().length(2),
+  type: SourceConnectorTypeSchema,
+  frequency: SourceFrequencySchema,
+  baseUrl: z.string().url(),
+  headers: z.record(z.string(), z.string()).default({}),
+  regulatoryArea: z.string().min(1).max(100),
+});
+
+export const TestSourceSchema = z.object({
+  type: SourceConnectorTypeSchema,
+  baseUrl: z.string().url(),
+  headers: z.record(z.string(), z.string()).default({}),
+});
+
+export const PatchSourceSchema = z.object({
+  active: z.boolean().optional(),
+  frequency: SourceFrequencySchema.optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Type inference helpers
 // ---------------------------------------------------------------------------
 

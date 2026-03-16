@@ -8,18 +8,25 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // GT brand
+        // GT brand — sourced from grantthornton.com
         brand: {
-          50: '#e8edf4',
-          100: '#c5d1e3',
-          200: '#9fb3d0',
-          300: '#7995bd',
-          400: '#5c7eaf',
-          500: '#3f67a1',
-          600: '#375a8e',
-          700: '#2d4a76',
-          800: '#1E3A5F', // Primary
-          900: '#0f2540',
+          50: '#f3eff8',
+          100: '#e0d5ed',
+          200: '#c5ade0',
+          300: '#a06dff',
+          400: '#8b5cf6',
+          500: '#6b3fa0',
+          600: '#5a3590',
+          700: '#4F2D7F', // Primary (GT violet)
+          800: '#3d2266',
+          900: '#2a1748',
+        },
+        teal: {
+          500: '#008D8F', // GT teal accent
+          600: '#007577',
+        },
+        accent: {
+          red: '#CE2C2C',  // GT CTA red
         },
         // Risk semaphore
         risk: {

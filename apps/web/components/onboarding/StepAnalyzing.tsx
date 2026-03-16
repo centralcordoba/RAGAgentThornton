@@ -56,7 +56,6 @@ export function StepAnalyzing({ countries, clientName }: StepAnalyzingProps) {
 
     return () => {
       cancelAnimationFrame(animFrame);
-      clearTimeout(timeout);
     };
   }, []);
 
@@ -79,7 +78,7 @@ export function StepAnalyzing({ countries, clientName }: StepAnalyzingProps) {
             return (
               <div
                 key={i}
-                className="absolute h-3 w-3 rounded-full bg-brand-800"
+                className="absolute h-3 w-3 rounded-full bg-brand-700"
                 style={{
                   left: `${x}%`,
                   top: `${y}%`,
@@ -105,7 +104,7 @@ export function StepAnalyzing({ countries, clientName }: StepAnalyzingProps) {
       <div className="space-y-2">
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-brand-800 rounded-full transition-all duration-300 ease-out"
+            className="h-full bg-brand-700 rounded-full transition-all duration-300 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -123,7 +122,7 @@ export function StepAnalyzing({ countries, clientName }: StepAnalyzingProps) {
               idx < currentStepIdx
                 ? 'text-risk-low'
                 : idx === currentStepIdx
-                  ? 'text-brand-800 font-medium'
+                  ? 'text-brand-700 font-medium'
                   : 'text-gray-300'
             }`}
           >

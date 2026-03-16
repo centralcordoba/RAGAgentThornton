@@ -65,7 +65,7 @@ export function RegulationFilters({ values, onChange, onReset, resultCount }: Re
                   onClick={() => onChange({ ...values, country: values.country === code ? null : code })}
                   className={`p-1 rounded transition-colors ${
                     values.country === code
-                      ? 'bg-brand-100 ring-1 ring-brand-800'
+                      ? 'bg-brand-100 ring-1 ring-brand-700'
                       : 'hover:bg-gray-100'
                   }`}
                   title={code}
@@ -86,7 +86,7 @@ export function RegulationFilters({ values, onChange, onReset, resultCount }: Re
                   onClick={() => onChange({ ...values, area: values.area === area ? null : area })}
                   className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
                     values.area === area
-                      ? 'bg-brand-800 text-white border-brand-800'
+                      ? 'bg-brand-700 text-white border-brand-700'
                       : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                 >

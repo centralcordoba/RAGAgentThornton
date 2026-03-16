@@ -94,7 +94,7 @@ export function StepCountries({ selected, onChange, onNext, onBack }: StepCountr
                     cy={country.y}
                     r={5}
                     fill="none"
-                    stroke="#1E3A5F"
+                    stroke="#4F2D7F"
                     strokeWidth={0.8}
                     strokeDasharray="2 1"
                   >
@@ -113,7 +113,7 @@ export function StepCountries({ selected, onChange, onNext, onBack }: StepCountr
                   cx={country.x}
                   cy={country.y}
                   r={3}
-                  fill={isSelected ? '#1E3A5F' : '#cbd5e1'}
+                  fill={isSelected ? '#4F2D7F' : '#cbd5e1'}
                   stroke="white"
                   strokeWidth={0.8}
                   className="transition-all duration-200"
@@ -123,7 +123,7 @@ export function StepCountries({ selected, onChange, onNext, onBack }: StepCountr
                   y={country.y - 5}
                   textAnchor="middle"
                   fontSize="2.5"
-                  fill={isSelected ? '#1E3A5F' : '#94a3b8'}
+                  fill={isSelected ? '#4F2D7F' : '#94a3b8'}
                   fontWeight={isSelected ? 'bold' : 'normal'}
                 >
                   {country.flag} {country.code}
@@ -145,7 +145,7 @@ export function StepCountries({ selected, onChange, onNext, onBack }: StepCountr
               onClick={() => selectRegion(region)}
               className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
                 allSelected
-                  ? 'bg-brand-800 text-white border-brand-800'
+                  ? 'bg-brand-700 text-white border-brand-700'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
             >
@@ -165,7 +165,7 @@ export function StepCountries({ selected, onChange, onNext, onBack }: StepCountr
               onClick={() => toggle(country.code)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-all ${
                 isSelected
-                  ? 'border-brand-800 bg-brand-50 text-brand-800 font-medium shadow-sm'
+                  ? 'border-brand-700 bg-brand-50 text-brand-700 font-medium shadow-sm'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
             >

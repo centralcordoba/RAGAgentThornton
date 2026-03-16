@@ -21,7 +21,7 @@ export function Header() {
     <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6">
       <div className="flex items-center gap-4">
         <h1 className="text-sm font-semibold text-gray-500">
-          RegWatch AI
+          Grant Thornton
         </h1>
       </div>
 
@@ -39,7 +39,7 @@ export function Header() {
         <button
           onClick={toggleChat}
           className={`p-1.5 rounded-md transition-colors ${
-            chatOpen ? 'bg-brand-100 text-brand-800' : 'hover:bg-gray-100'
+            chatOpen ? 'bg-brand-100 text-brand-700' : 'hover:bg-gray-100'
           }`}
           aria-label="Toggle chat"
         >

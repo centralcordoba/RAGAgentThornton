@@ -79,7 +79,7 @@ export function RecentChanges({ initialChanges, sseUrl }: RecentChangesProps) {
               onClick={() => setFilter(filter === level ? null : level)}
               className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
                 filter === level
-                  ? 'bg-brand-800 text-white border-brand-800'
+                  ? 'bg-brand-700 text-white border-brand-700'
                   : 'border-gray-200 text-gray-500 hover:border-gray-300'
               }`}
             >

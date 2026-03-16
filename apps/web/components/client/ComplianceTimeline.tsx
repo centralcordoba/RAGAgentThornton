@@ -114,7 +114,7 @@ export function ComplianceTimeline({ events, countries }: ComplianceTimelineProp
           <button
             onClick={() => setCountryFilter(null)}
             className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-              !countryFilter ? 'bg-brand-800 text-white border-brand-800' : 'border-gray-200 text-gray-500'
+              !countryFilter ? 'bg-brand-700 text-white border-brand-700' : 'border-gray-200 text-gray-500'
             }`}
           >
             Todos
@@ -124,7 +124,7 @@ export function ComplianceTimeline({ events, countries }: ComplianceTimelineProp
               key={code}
               onClick={() => setCountryFilter(countryFilter === code ? null : code)}
               className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                countryFilter === code ? 'bg-brand-800 text-white border-brand-800' : 'border-gray-200 text-gray-500'
+                countryFilter === code ? 'bg-brand-700 text-white border-brand-700' : 'border-gray-200 text-gray-500'
               }`}
             >
               <CountryFlag code={code} size="sm" />

@@ -131,7 +131,7 @@ export function StepResult({ result, clientName, onSave, onBack, isSaving }: Ste
                 onClick={() => setActiveTab(tab)}
                 className={`py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab
-                    ? 'border-brand-800 text-brand-800'
+                    ? 'border-brand-700 text-brand-700'
                     : 'border-transparent text-gray-400 hover:text-gray-600'
                 }`}
               >
@@ -147,13 +147,13 @@ export function StepResult({ result, clientName, onSave, onBack, isSaving }: Ste
               <div className="flex gap-2">
                 <button
                   onClick={() => setSummaryLang('es')}
-                  className={`text-xs px-2 py-1 rounded ${summaryLang === 'es' ? 'bg-brand-800 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  className={`text-xs px-2 py-1 rounded ${summaryLang === 'es' ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-600'}`}
                 >
                   Español
                 </button>
                 <button
                   onClick={() => setSummaryLang('en')}
-                  className={`text-xs px-2 py-1 rounded ${summaryLang === 'en' ? 'bg-brand-800 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  className={`text-xs px-2 py-1 rounded ${summaryLang === 'en' ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-600'}`}
                 >
                   English
                 </button>

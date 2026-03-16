@@ -80,4 +80,18 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, Readonly<Record<string, 
     // Note: HITL approval logic (PROFESSIONAL required for PENDING_REVIEW)
     // is enforced in the route handler, not here
   },
+  '/api/sources': {
+    GET: ['ADMIN'],
+    POST: ['ADMIN'],
+  },
+  '/api/sources/test': {
+    POST: ['ADMIN'],
+  },
+  '/api/sources/:id/trigger': {
+    POST: ['ADMIN'],
+  },
+  '/api/sources/:id': {
+    PATCH: ['ADMIN'],
+    DELETE: ['ADMIN'],
+  },
 } as const;

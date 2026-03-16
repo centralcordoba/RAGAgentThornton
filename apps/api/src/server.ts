@@ -17,6 +17,7 @@ import {
   createClientsRouter,
   createChatRouter,
   createAlertsRouter,
+  createSourcesRouter,
 } from './routes/index.js';
 import {
   createAuthMiddleware,
@@ -82,9 +83,11 @@ app.use('/api', createChatRouter({
   complianceAgent: null as never,
 }));
 app.use('/api', createAlertsRouter({ prisma: null as never }));
+app.use('/api', createSourcesRouter({ scheduler: null as never }));
 
 // RBAC guards for specific routes
 app.use('/api/ingest', createRbacMiddleware(['ADMIN', 'PROFESSIONAL']));
+app.use('/api/sources', createRbacMiddleware(['ADMIN']));
 app.use('/api/clients', createRbacMiddleware(['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER']));
 
 // --- Error handler (must be last) ---

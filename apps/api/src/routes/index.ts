@@ -10,3 +10,5 @@ export { createChatRouter } from './chat.js';
 export type { ChatRouteDeps } from './chat.js';
 export { createAlertsRouter } from './alerts.js';
 export type { AlertRouteDeps } from './alerts.js';
+export { createSourcesRouter } from './sources.js';
+export type { SourcesRouteDeps } from './sources.js';

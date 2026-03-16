@@ -84,7 +84,7 @@ export function StepBasicInfo({ data, onChange, onNext }: StepBasicInfoProps) {
               onClick={() => onChange({ ...data, companyType: type })}
               className={`px-3 py-2.5 rounded-md border text-sm transition-colors ${
                 data.companyType === type
-                  ? 'border-brand-800 bg-brand-50 text-brand-800 font-medium'
+                  ? 'border-brand-700 bg-brand-50 text-brand-700 font-medium'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
             >
@@ -105,7 +105,7 @@ export function StepBasicInfo({ data, onChange, onNext }: StepBasicInfoProps) {
               onClick={() => toggleIndustry(ind.id)}
               className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
                 data.industries.includes(ind.id)
-                  ? 'border-brand-800 bg-brand-800 text-white'
+                  ? 'border-brand-700 bg-brand-700 text-white'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
             >

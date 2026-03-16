@@ -11,7 +11,7 @@
 // Never fabricates data. If confidence < 0.5 → "insufficient data".
 // ============================================================================
 
-import { ChatOpenAI } from '@langchain/azure-openai';
+import { AzureChatOpenAI } from '@langchain/openai';
 import { AgentExecutor, createReactAgent } from 'langchain/agents';
 import {
   ChatPromptTemplate,
@@ -124,7 +124,7 @@ export class ComplianceAgent {
     });
 
     // Create LLM
-    const llm = new ChatOpenAI({
+    const llm = new AzureChatOpenAI({
       azureOpenAIEndpoint: this.config.azureOpenAIEndpoint,
       azureOpenAIApiKey: this.config.azureOpenAIApiKey,
       azureOpenAIApiVersion: this.config.azureOpenAIApiVersion,

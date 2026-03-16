@@ -112,6 +112,35 @@ export const api = {
         body: JSON.stringify(data ?? {}),
       }),
   },
+  // Sources (Phase 7 — ADMIN only)
+  sources: {
+    list: () =>
+      request<{ data: readonly SourceData[]; total: number }>('/api/sources'),
+    create: (data: CreateSourceData) =>
+      request<SourceData>('/api/sources', { method: 'POST', body: JSON.stringify(data) }),
+    test: (data: TestSourceData) =>
+      request<SourceTestResultData>('/api/sources/test', { method: 'POST', body: JSON.stringify(data) }),
+    trigger: (id: string): EventSource => {
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+      // SSE via POST — use fetch + ReadableStream
+      return new EventSource(
+        `${API_BASE}/api/sources/${id}/trigger`,
+      );
+    },
+    triggerFetch: async (id: string): Promise<Response> => {
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+      return fetch(`${API_BASE}/api/sources/${id}/trigger`, {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+    },
+    patch: (id: string, data: { active?: boolean; frequency?: string }) =>
+      request<SourceData>(`/api/sources/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/sources/${id}`, { method: 'DELETE' }),
+  },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -180,4 +209,49 @@ interface GraphEdge {
   readonly source: string;
   readonly target: string;
   readonly relationship: string;
+}
+
+// Sources
+interface SourceData {
+  readonly id: string;
+  readonly name: string;
+  readonly country: string;
+  readonly type: 'API' | 'RSS' | 'SCRAPING';
+  readonly status: 'OK' | 'WARNING' | 'ERROR';
+  readonly lastFetch: string | null;
+  readonly docsIndexed: number;
+  readonly lastError: string | null;
+  readonly frequency: 'every_10min' | 'hourly' | 'daily';
+  readonly active: boolean;
+  readonly baseUrl: string;
+  readonly headers: Record<string, string>;
+  readonly regulatoryArea: string;
+}
+
+interface CreateSourceData {
+  readonly name: string;
+  readonly country: string;
+  readonly type: 'API' | 'RSS' | 'SCRAPING';
+  readonly frequency: 'every_10min' | 'hourly' | 'daily';
+  readonly baseUrl: string;
+  readonly headers: Record<string, string>;
+  readonly regulatoryArea: string;
+}
+
+interface TestSourceData {
+  readonly type: 'API' | 'RSS' | 'SCRAPING';
+  readonly baseUrl: string;
+  readonly headers: Record<string, string>;
+}
+
+interface SourceTestResultData {
+  readonly success: boolean;
+  readonly statusCode: number | null;
+  readonly errorMessage: string | null;
+  readonly preview: readonly {
+    readonly title: string;
+    readonly date: string;
+    readonly url: string;
+    readonly snippet: string;
+  }[];
 }

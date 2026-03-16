@@ -119,7 +119,7 @@ export function AlertsPanel({
                 onClick={() => setStatusFilter(statusFilter === status ? null : status)}
                 className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
                   statusFilter === status
-                    ? 'bg-brand-800 text-white border-brand-800'
+                    ? 'bg-brand-700 text-white border-brand-700'
                     : 'border-gray-200 text-gray-500'
                 }`}
               >
@@ -254,7 +254,7 @@ function AlertRow({
           disabled={isProcessing}
           className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-md transition-colors ${
             alert.status === 'PENDING_REVIEW'
-              ? 'bg-brand-800 text-white hover:bg-brand-700'
+              ? 'bg-brand-700 text-white hover:bg-brand-700'
               : 'border border-gray-300 text-gray-600 hover:bg-gray-100'
           } disabled:opacity-50`}
         >
