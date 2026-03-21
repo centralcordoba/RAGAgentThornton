@@ -8,7 +8,7 @@
 interface CountryFlagProps {
   readonly code: string;
   readonly showName?: boolean;
-  readonly size?: 'sm' | 'md' | 'lg';
+  readonly size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
 const COUNTRY_DATA: Readonly<Record<string, { flag: string; name: string }>> = {
@@ -25,6 +25,7 @@ const COUNTRY_DATA: Readonly<Record<string, { flag: string; name: string }>> = {
 };
 
 const SIZE_CLASSES = {
+  xs: 'text-xs',
   sm: 'text-sm',
   md: 'text-base',
   lg: 'text-xl',

@@ -1,14 +1,17 @@
 // ============================================================================
 // FILE: apps/web/components/calendar/CalendarPage.tsx
-// Main calendar page — view toggle, filters, KPI summary, calendar/list.
+// Main calendar page — view toggle (month/week/list), filters, KPI summary.
+// URL params: ?clientId=&country=&area=&type=&view=month|week|list
 // ============================================================================
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { MonthView } from './MonthView';
+import { WeekView } from './WeekView';
 import { ListView } from './ListView';
-import { CalendarSummaryBar } from './CalendarSummaryBar';
+import { CalendarSummaryBar, type UrgencyFilter } from './CalendarSummaryBar';
 import { EventDrawer } from './EventDrawer';
 
 // ---------------------------------------------------------------------------
@@ -40,24 +43,48 @@ interface Summary {
   readonly byType: readonly { type: string; count: number }[];
 }
 
-type ViewMode = 'month' | 'list';
+type ViewMode = 'month' | 'week' | 'list';
 
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
+const COUNTRIES = ['US', 'EU', 'ES', 'MX', 'AR', 'BR'];
+const TYPES = ['DEADLINE', 'FILING', 'AUDIT', 'RENEWAL', 'REGULATORY_CHANGE', 'REVIEW'];
+const AREAS = ['Financiero', 'Datos/GDPR', 'Laboral', 'Ambiental', 'Fiscal'];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function CalendarPage() {
-  const [view, setView] = useState<ViewMode>('month');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Read initial values from URL params
+  const [view, setView] = useState<ViewMode>(
+    (searchParams.get('view') as ViewMode) || 'month',
+  );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>('all');
 
-  // Filters
-  const [filterCountry, setFilterCountry] = useState('');
-  const [filterType, setFilterType] = useState('');
+  // Filters from URL params
+  const [filterClientId, setFilterClientId] = useState(searchParams.get('clientId') ?? '');
+  const [filterCountry, setFilterCountry] = useState(searchParams.get('country') ?? '');
+  const [filterArea, setFilterArea] = useState(searchParams.get('area') ?? '');
+  const [filterType, setFilterType] = useState(searchParams.get('type') ?? '');
+
+  // Sync URL params
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (view !== 'month') params.set('view', view);
+    if (filterClientId) params.set('clientId', filterClientId);
+    if (filterCountry) params.set('country', filterCountry);
+    if (filterArea) params.set('area', filterArea);
+    if (filterType) params.set('type', filterType);
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : '/calendar', { scroll: false });
+  }, [view, filterClientId, filterCountry, filterArea, filterType, router]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -65,7 +92,9 @@ export function CalendarPage() {
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
       const qs = new URLSearchParams();
+      if (filterClientId) qs.set('clientId', filterClientId);
       if (filterCountry) qs.set('country', filterCountry);
+      if (filterArea) qs.set('area', filterArea);
       if (filterType) qs.set('type', filterType);
 
       const [eventsRes, summaryRes] = await Promise.all([
@@ -85,7 +114,7 @@ export function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterCountry, filterType]);
+  }, [filterClientId, filterCountry, filterArea, filterType]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -103,14 +132,28 @@ export function CalendarPage() {
     setSelectedEvent(null);
   };
 
+  const handleAssign = async (eventId: string, assignedTo: string) => {
+    const token = sessionStorage.getItem('auth_token');
+    await fetch(`${API_BASE}/api/calendar/events/${eventId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ assignedTo }),
+    });
+    fetchData();
+  };
+
   const handleExport = () => {
     const qs = new URLSearchParams();
+    if (filterClientId) qs.set('clientId', filterClientId);
     if (filterCountry) qs.set('country', filterCountry);
     window.open(`${API_BASE}/api/calendar/export/ical?${qs}`, '_blank');
   };
 
-  const COUNTRIES = ['', 'US', 'EU', 'ES', 'MX', 'AR', 'BR'];
-  const TYPES = ['', 'DEADLINE', 'FILING', 'AUDIT', 'RENEWAL', 'REGULATORY_CHANGE', 'REVIEW'];
+  // Count total upcoming (next 90 days)
+  const totalUpcoming = events.filter((e) => e.status !== 'COMPLETED' && e.daysUntil >= 0).length;
 
   return (
     <div className="space-y-5">
@@ -128,21 +171,53 @@ export function CalendarPage() {
       </div>
 
       {/* Summary KPIs */}
-      {summary && <CalendarSummaryBar summary={summary} />}
+      {summary && (
+        <CalendarSummaryBar
+          summary={summary}
+          totalUpcoming={totalUpcoming}
+          activeFilter={urgencyFilter}
+          onFilterClick={(filter) => {
+            setUrgencyFilter(filter);
+            if (filter !== 'all' && view !== 'list') setView('list');
+          }}
+        />
+      )}
 
       {/* Filters + view toggle */}
       <div className="card card-body">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Client filter */}
+            <input
+              type="text"
+              value={filterClientId}
+              onChange={(e) => setFilterClientId(e.target.value)}
+              placeholder="ID de cliente..."
+              className="input w-auto text-xs"
+              style={{ maxWidth: '160px' }}
+            />
+
             {/* Country filter */}
             <select
               value={filterCountry}
               onChange={(e) => setFilterCountry(e.target.value)}
               className="input w-auto text-xs"
             >
-              <option value="">Todos los países</option>
-              {COUNTRIES.filter(Boolean).map((c) => (
+              <option value="">Todos los paises</option>
+              {COUNTRIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            {/* Area filter */}
+            <select
+              value={filterArea}
+              onChange={(e) => setFilterArea(e.target.value)}
+              className="input w-auto text-xs"
+            >
+              <option value="">Todas las areas</option>
+              {AREAS.map((a) => (
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
 
@@ -153,7 +228,7 @@ export function CalendarPage() {
               className="input w-auto text-xs"
             >
               <option value="">Todos los tipos</option>
-              {TYPES.filter(Boolean).map((t) => (
+              {TYPES.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
@@ -161,22 +236,17 @@ export function CalendarPage() {
 
           {/* View toggle */}
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setView('month')}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
-                view === 'month' ? 'bg-white shadow-sm text-brand-700 font-medium' : 'text-gray-500'
-              }`}
-            >
-              Mensual
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
-                view === 'list' ? 'bg-white shadow-sm text-brand-700 font-medium' : 'text-gray-500'
-              }`}
-            >
-              Lista
-            </button>
+            {(['month', 'week', 'list'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => { setView(v); if (v !== 'list') setUrgencyFilter('all'); }}
+                className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                  view === v ? 'bg-white shadow-sm text-brand-700 font-medium' : 'text-gray-500'
+                }`}
+              >
+                {v === 'month' ? 'Mensual' : v === 'week' ? 'Semanal' : 'Lista'}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -194,8 +264,16 @@ export function CalendarPage() {
         </div>
       ) : view === 'month' ? (
         <MonthView events={events} onEventClick={setSelectedEvent} />
+      ) : view === 'week' ? (
+        <WeekView events={events} onEventClick={setSelectedEvent} />
       ) : (
-        <ListView events={events} onEventClick={setSelectedEvent} onStatusChange={handleStatusChange} />
+        <ListView
+          events={events}
+          onEventClick={setSelectedEvent}
+          onStatusChange={handleStatusChange}
+          onAssign={handleAssign}
+          activeFilter={urgencyFilter}
+        />
       )}
 
       {/* Event detail drawer */}

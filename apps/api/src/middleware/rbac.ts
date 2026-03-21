@@ -98,6 +98,22 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, Readonly<Record<string, 
   '/api/impact/reports/:id/export-pdf': {
     POST: ['ADMIN', 'PROFESSIONAL'],
   },
+  '/api/calendar/events': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+    POST: ['ADMIN', 'PROFESSIONAL'],
+  },
+  '/api/calendar/events/:id': {
+    PATCH: ['ADMIN', 'PROFESSIONAL'],
+  },
+  '/api/calendar/events/upcoming': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/calendar/summary': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/calendar/export/ical': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
   '/api/sources': {
     GET: ['ADMIN'],
     POST: ['ADMIN'],
