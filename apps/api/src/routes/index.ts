@@ -16,3 +16,5 @@ export { createImpactRouter } from './impact.js';
 export type { ImpactRouteDeps } from './impact.js';
 export { createCalendarRouter } from './calendar.js';
 export type { CalendarRouteDeps } from './calendar.js';
+export { createMapRouter } from './map.js';
+export type { MapRouteDeps } from './map.js';

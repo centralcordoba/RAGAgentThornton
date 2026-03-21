@@ -25,6 +25,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Onboarding', href: '/onboarding', icon: '➕' },
   { label: 'Impacto', href: '/impact', icon: '🎯' },
   { label: 'Calendario', href: '/calendar', icon: '📅' },
+  { label: 'Mapa', href: '/map', icon: '🗺️' },
   { label: 'Fuentes', href: '/sources', icon: '⚙️', adminOnly: true },
 ];
 

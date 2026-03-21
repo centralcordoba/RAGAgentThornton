@@ -7,6 +7,7 @@ import { GlobalMetrics } from '@/components/dashboard/GlobalMetrics';
 import type { GlobalMetricsData } from '@/components/dashboard/GlobalMetrics';
 import { GlobalMap } from '@/components/dashboard/GlobalMap';
 import type { CountryRiskData } from '@/components/dashboard/GlobalMap';
+import { WorldRiskMap } from '@/components/map/WorldRiskMap';
 import { RecentChanges } from '@/components/dashboard/RecentChanges';
 import type { ChangeItem } from '@/components/dashboard/RecentChanges';
 
@@ -34,7 +35,10 @@ export default async function DashboardPage() {
       {/* KPI Cards */}
       <GlobalMetrics data={metrics} />
 
-      {/* Map + Feed */}
+      {/* Compact Risk Map */}
+      <WorldRiskMap compact height={300} />
+
+      {/* Detailed Map + Feed */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2">
           <GlobalMap countries={countries} />

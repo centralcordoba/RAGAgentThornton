@@ -20,6 +20,7 @@ import {
   createSourcesRouter,
   createImpactRouter,
   createCalendarRouter,
+  createMapRouter,
 } from './routes/index.js';
 import {
   createAuthMiddleware,
@@ -88,6 +89,7 @@ app.use('/api', createAlertsRouter({ prisma: null as never }));
 app.use('/api', createSourcesRouter({ scheduler: null as never }));
 app.use('/api', createImpactRouter({ prisma: null as never }));
 app.use('/api', createCalendarRouter({ prisma: null as never }));
+app.use('/api', createMapRouter({ prisma: null as never }));
 
 // RBAC guards for specific routes
 app.use('/api/ingest', createRbacMiddleware(['ADMIN', 'PROFESSIONAL']));
@@ -95,6 +97,7 @@ app.use('/api/sources', createRbacMiddleware(['ADMIN']));
 app.use('/api/impact', createRbacMiddleware(['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER']));
 app.use('/api/calendar', createRbacMiddleware(['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER']));
 app.use('/api/clients', createRbacMiddleware(['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER']));
+app.use('/api/map', createRbacMiddleware(['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER']));
 
 // --- Error handler (must be last) ---
 app.use(createErrorHandler());

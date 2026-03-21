@@ -114,6 +114,12 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, Readonly<Record<string, 
   '/api/calendar/export/ical': {
     GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
   },
+  '/api/map/risk-scores': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/map/country/:code/detail': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
   '/api/sources': {
     GET: ['ADMIN'],
     POST: ['ADMIN'],
