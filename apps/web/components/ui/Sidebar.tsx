@@ -23,6 +23,8 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Regulaciones', href: '/regulations', icon: '📜' },
   { label: 'Alertas', href: '/alerts', icon: '🔔' },
   { label: 'Onboarding', href: '/onboarding', icon: '➕' },
+  { label: 'Impacto', href: '/impact', icon: '🎯' },
+  { label: 'Calendario', href: '/calendar', icon: '📅' },
   { label: 'Fuentes', href: '/sources', icon: '⚙️', adminOnly: true },
 ];
 

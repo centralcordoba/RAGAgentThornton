@@ -57,3 +57,43 @@
     @apply block text-sm font-medium text-gray-700 mb-1;
   }
 }
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* FullCalendar overrides */
+.fullcalendar-container .fc {
+  font-family: inherit;
+  font-size: 0.8125rem;
+}
+.fullcalendar-container .fc .fc-toolbar-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.fullcalendar-container .fc .fc-button {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.375rem;
+}
+.fullcalendar-container .fc .fc-button-primary {
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+.fullcalendar-container .fc .fc-button-primary:hover {
+  opacity: 0.9;
+}
+.fullcalendar-container .fc .fc-daygrid-event {
+  border-radius: 4px;
+  padding: 1px 4px;
+  border-left-width: 3px;
+}
+.fullcalendar-container .fc .fc-day-today {
+  background-color: rgba(79, 45, 127, 0.04) !important;
+}

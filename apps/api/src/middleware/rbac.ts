@@ -80,6 +80,24 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, Readonly<Record<string, 
     // Note: HITL approval logic (PROFESSIONAL required for PENDING_REVIEW)
     // is enforced in the route handler, not here
   },
+  '/api/impact/heatmap': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/impact/analyze/:changeId': {
+    POST: ['ADMIN', 'PROFESSIONAL'],
+  },
+  '/api/impact/timeline': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/impact/reports': {
+    GET: ['ADMIN', 'PROFESSIONAL', 'CLIENT_VIEWER'],
+  },
+  '/api/impact/reports/:id/approve': {
+    PATCH: ['ADMIN', 'PROFESSIONAL'],
+  },
+  '/api/impact/reports/:id/export-pdf': {
+    POST: ['ADMIN', 'PROFESSIONAL'],
+  },
   '/api/sources': {
     GET: ['ADMIN'],
     POST: ['ADMIN'],

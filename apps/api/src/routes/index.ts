@@ -12,3 +12,7 @@ export { createAlertsRouter } from './alerts.js';
 export type { AlertRouteDeps } from './alerts.js';
 export { createSourcesRouter } from './sources.js';
 export type { SourcesRouteDeps } from './sources.js';
+export { createImpactRouter } from './impact.js';
+export type { ImpactRouteDeps } from './impact.js';
+export { createCalendarRouter } from './calendar.js';
+export type { CalendarRouteDeps } from './calendar.js';
