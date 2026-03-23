@@ -159,10 +159,28 @@ export function CalendarPage() {
   };
 
   const handleExport = () => {
-    const qs = new URLSearchParams();
-    if (filterClientId) qs.set('clientId', filterClientId);
-    if (filterCountry) qs.set('country', filterCountry);
-    window.open(`${API_BASE}/api/calendar/export/ical?${qs}`, '_blank');
+    if (events.length === 0) return;
+
+    const headers = ['Fecha', 'Estado', 'Titulo', 'Cliente', 'Pais', 'Area', 'Asignado', 'Dias'];
+    const rows = events.map((e) => [
+      e.date,
+      e.status,
+      `"${e.title.replace(/"/g, '""')}"`,
+      `"${e.client.name.replace(/"/g, '""')}"`,
+      e.country,
+      e.regulatoryArea,
+      e.assignedTo ?? '',
+      String(e.daysUntil),
+    ]);
+
+    const csv = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `regwatch-calendar-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Count total upcoming (next 90 days)
@@ -178,7 +196,7 @@ export function CalendarPage() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleExport} className="btn-secondary text-xs flex items-center gap-1.5">
-            Exportar .ics
+            Exportar CSV
           </button>
         </div>
       </div>

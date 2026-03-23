@@ -115,48 +115,32 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       },
     });
 
-    // Audit
-    await deps.prisma.auditEntry.create({
-      data: {
-        id: randomUUID(),
-        tenantId,
-        action: 'CLIENT_ONBOARDED',
-        entityType: 'Client',
-        entityId: clientId,
-        performedBy: (req as AuthenticatedRequest).userId ?? 'unknown',
-        details: {
-          name: input.name,
-          countries: input.countries,
-          companyType: input.companyType,
-          industries: input.industries,
-        },
-      },
-    });
+    // Trigger onboarding asynchronously if engine is available
+    if (deps.onboardingEngine) {
+      const clientData: Client = {
+        id: client.id,
+        tenantId: client.tenantId,
+        name: client.name,
+        countries: client.countries,
+        companyType: client.companyType,
+        industries: client.industries,
+        contactEmail: client.contactEmail,
+        isActive: client.isActive,
+        onboardedAt: client.onboardedAt,
+        createdAt: client.createdAt,
+        updatedAt: client.updatedAt,
+      };
 
-    // Trigger onboarding asynchronously (graph registration + compliance map)
-    const clientData: Client = {
-      id: client.id,
-      tenantId: client.tenantId,
-      name: client.name,
-      countries: client.countries,
-      companyType: client.companyType,
-      industries: client.industries,
-      contactEmail: client.contactEmail,
-      isActive: client.isActive,
-      onboardedAt: client.onboardedAt,
-      createdAt: client.createdAt,
-      updatedAt: client.updatedAt,
-    };
-
-    void deps.onboardingEngine.generateComplianceMap(clientData).catch((err) => {
-      logger.error({
-        operation: 'clients:onboarding_failed',
-        requestId,
-        clientId,
-        result: 'error',
-        error: err instanceof Error ? err.message : String(err),
+      void deps.onboardingEngine.generateComplianceMap(clientData).catch((err) => {
+        logger.error({
+          operation: 'clients:onboarding_failed',
+          requestId,
+          clientId,
+          result: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }
 
     logger.info({
       operation: 'clients:create',
@@ -187,70 +171,38 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       throw Errors.notFound(requestId, 'Client', id!);
     }
 
-    const clientData: Client = {
-      id: client.id,
-      tenantId: client.tenantId,
-      name: client.name,
-      countries: client.countries,
-      companyType: client.companyType,
-      industries: client.industries,
-      contactEmail: client.contactEmail,
-      isActive: client.isActive,
-      onboardedAt: client.onboardedAt,
-      createdAt: client.createdAt,
-      updatedAt: client.updatedAt,
-    };
-
-    // Parallel data fetch
-    const [obligationMap, upcomingDeadlines, recentAlerts, recentChanges] = await Promise.all([
-      deps.graphService.getClientObligations(clientData),
-      deps.graphService.getUpcomingDeadlines(tenantId, 90),
+    // Parallel data fetch from Prisma (no graph service dependency)
+    const [obligations, recentAlerts, recentChanges] = await Promise.all([
+      deps.prisma.obligation.findMany({
+        where: { clientId: id, tenantId },
+        orderBy: { deadline: 'asc' },
+      }),
       deps.prisma.alert.findMany({
-        where: { clientId: id, tenantId, createdAt: { gte: thirtyDaysAgo() } },
+        where: { clientId: id, tenantId },
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
       deps.prisma.regulatoryChange.findMany({
-        where: {
-          country: { in: client.countries },
-          publishedDate: { gte: thirtyDaysAgo() },
-        },
+        where: { country: { in: client.countries } },
         orderBy: { publishedDate: 'desc' },
         take: 10,
       }),
     ]);
 
-    // Filter deadlines for this specific client
-    const clientDeadlines = upcomingDeadlines.filter((d) => d.clientId === id);
-
-    // Calculate compliance score
-    const totalObligations = obligationMap.totalObligations;
-    const completedCount = Object.values(obligationMap.byCountry)
-      .flat()
-      .filter((o) => o.status === 'COMPLETED').length;
+    const totalObligations = obligations.length;
+    const completedCount = obligations.filter((o) => o.status === 'COMPLETED').length;
     const complianceScore = totalObligations > 0
       ? Math.round((completedCount / totalObligations) * 100)
       : 100;
 
-    // Build country status
-    const countriesStatus = client.countries.map((country) => {
-      const countryObligations = obligationMap.byCountry[country] ?? [];
-      const completed = countryObligations.filter((o) => o.status === 'COMPLETED').length;
-      return {
-        country,
-        status: completed === countryObligations.length ? 'compliant' : 'pending',
-        obligationsTotal: countryObligations.length,
-        obligationsCompleted: completed,
-        lastUpdated: new Date(),
-      };
-    });
-
-    // Obligations by status
-    const allObligations = Object.values(obligationMap.byCountry).flat();
     const obligationsByStatus: Record<string, number> = {};
-    for (const obl of allObligations) {
+    for (const obl of obligations) {
       obligationsByStatus[obl.status] = (obligationsByStatus[obl.status] ?? 0) + 1;
     }
+
+    const upcomingDeadlines = obligations
+      .filter((o) => o.status !== 'COMPLETED')
+      .slice(0, 10);
 
     logger.info({
       operation: 'clients:dashboard',
@@ -258,21 +210,21 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       clientId: id,
       totalObligations,
       complianceScore,
-      upcomingDeadlines: clientDeadlines.length,
-      recentAlerts: recentAlerts.length,
       result: 'success',
     });
 
     res.json({
       clientId: id,
+      clientName: client.name,
+      companyType: client.companyType,
+      countries: client.countries,
       tenantId,
       complianceScore,
       totalObligations,
       obligationsByStatus,
       recentChanges,
       pendingAlerts: recentAlerts,
-      upcomingDeadlines: clientDeadlines,
-      countries: countriesStatus,
+      upcomingDeadlines,
     });
   });
 
@@ -296,19 +248,91 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       throw Errors.notFound(requestId, 'Client', id!);
     }
 
-    const graph = await deps.graphService.getClientGraph(id!, tenantId, depth);
+    // Build graph from Prisma data (no Neo4j dependency)
+    const client = await deps.prisma.client.findFirst({
+      where: { id, tenantId },
+      include: {
+        obligations: {
+          include: { change: { select: { id: true, title: true, country: true } } },
+        },
+      },
+    });
+
+    if (!client) {
+      throw Errors.notFound(requestId, 'Client', id!);
+    }
+
+    const nodes: { id: string; label: string; type: string; properties: Record<string, unknown> }[] = [];
+    const edges: { id: string; sourceNodeId: string; targetNodeId: string; relationship: string }[] = [];
+
+    // Client node
+    nodes.push({ id: client.id, label: client.name, type: 'CLIENT', properties: { companyType: client.companyType } });
+
+    // Country nodes
+    for (const country of client.countries) {
+      const nodeId = `country-${country}`;
+      if (!nodes.find((n) => n.id === nodeId)) {
+        nodes.push({ id: nodeId, label: country, type: 'JURISDICTION', properties: {} });
+        edges.push({ id: `${client.id}-${nodeId}`, sourceNodeId: client.id, targetNodeId: nodeId, relationship: 'OPERATES_IN' });
+      }
+    }
+
+    // Obligation + Regulation nodes
+    for (const obl of client.obligations) {
+      nodes.push({ id: obl.id, label: obl.title, type: 'OBLIGATION', properties: { status: obl.status, deadline: obl.deadline.toISOString().split('T')[0], priority: obl.priority } });
+      const countryNodeId = `country-${obl.change.country}`;
+      edges.push({ id: `${countryNodeId}-${obl.id}`, sourceNodeId: countryNodeId, targetNodeId: obl.id, relationship: 'HAS_OBLIGATION' });
+
+      // Regulation node
+      const regNodeId = `reg-${obl.change.id}`;
+      if (!nodes.find((n) => n.id === regNodeId)) {
+        nodes.push({ id: regNodeId, label: obl.change.title, type: 'REGULATION', properties: {} });
+      }
+      edges.push({ id: `${obl.id}-${regNodeId}`, sourceNodeId: obl.id, targetNodeId: regNodeId, relationship: 'REQUIRED_BY' });
+    }
 
     logger.info({
       operation: 'clients:graph',
       requestId,
       clientId: id,
-      depth,
-      nodes: graph.nodes.length,
-      edges: graph.edges.length,
+      nodes: nodes.length,
+      edges: edges.length,
       result: 'success',
     });
 
-    res.json(graph);
+    res.json({ nodes, edges });
+  });
+
+  // -----------------------------------------------------------------------
+  // DELETE /api/clients/:id — soft delete (set isActive = false)
+  // -----------------------------------------------------------------------
+  router.delete('/clients/:id', async (req: Request, res: Response) => {
+    const requestId = req.headers['x-request-id'] as string ?? randomUUID();
+    const tenantId = (req as AuthenticatedRequest).tenantId!;
+    const { id } = req.params;
+
+    const client = await deps.prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      throw Errors.notFound(requestId, 'Client', id!);
+    }
+
+    const updated = await deps.prisma.client.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    logger.info({
+      operation: 'clients:soft_delete',
+      requestId,
+      clientId: id,
+      clientName: client.name,
+      result: 'success',
+    });
+
+    res.json(updated);
   });
 
   return router;

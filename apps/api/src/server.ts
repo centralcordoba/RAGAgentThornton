@@ -264,15 +264,34 @@ async function start(): Promise<void> {
       );
     }
 
-    // Wait for all connections (best-effort — server starts even if some fail)
-    await Promise.allSettled(connectPromises);
-
-    app.listen(PORT, () => {
+    // Start listening FIRST, then connect services in background
+    // This prevents EADDRINUSE when Neo4j takes 14+ seconds to connect
+    const server = app.listen(PORT, () => {
       logger.info({
         service: 'api',
         operation: 'server:started',
         port: PORT,
         result: 'success',
+      });
+    });
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.warn({ service: 'api', operation: 'server:port_in_use', port: PORT, result: 'retry' });
+        setTimeout(() => {
+          server.close();
+          server.listen(PORT);
+        }, 1000);
+      } else {
+        throw err;
+      }
+    });
+
+    // Connect services in background (server already accepting requests)
+    void Promise.allSettled(connectPromises).then(() => {
+      logger.info({
+        service: 'api',
+        operation: 'services:connected',
         services: {
           prisma: services.prisma ? 'configured' : 'not_configured',
           redis: services.redisCache ? 'configured' : 'not_configured',
