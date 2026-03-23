@@ -56,7 +56,7 @@ export function TriggerDrawer({ source, onClose }: Props) {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const token = sessionStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'];
 
     const trigger = async () => {
       try {

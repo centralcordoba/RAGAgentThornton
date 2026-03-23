@@ -69,7 +69,7 @@ export function CountryDetailDrawer({ country, onClose }: Props) {
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const token = sessionStorage.getItem('auth_token');
+        const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
         const res = await fetch(`${API_BASE}/api/map/country/${country.code}/detail`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });

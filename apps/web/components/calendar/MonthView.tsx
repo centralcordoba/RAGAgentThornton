@@ -61,6 +61,7 @@ interface TooltipState {
 export function MonthView({ events, onEventClick }: Props) {
   const [tooltip, setTooltip] = useState<TooltipState>({ visible: false, x: 0, y: 0, event: null });
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<FullCalendar>(null);
 
   const calendarEvents = events.map((e) => {
     const colors = TYPE_COLORS[e.type] ?? TYPE_COLORS['REVIEW']!;
@@ -87,9 +88,33 @@ export function MonthView({ events, onEventClick }: Props) {
     return () => window.removeEventListener('scroll', handleScroll, true);
   }, []);
 
+  // Years with events for quick jump
+  const eventYears = Array.from(new Set(events.map((e) => new Date(e.date).getFullYear()))).sort();
+
+  const jumpToYear = (year: number) => {
+    const api = calendarRef.current?.getApi();
+    if (api) api.gotoDate(new Date(year, 0, 1));
+  };
+
   return (
     <div className="card card-body fullcalendar-container relative">
+      {/* Year jump buttons */}
+      {eventYears.length > 1 && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[11px] text-gray-400">Ir a:</span>
+          {eventYears.map((y) => (
+            <button
+              key={y}
+              onClick={() => jumpToYear(y)}
+              className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-brand-700 hover:text-brand-700 transition-colors"
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
       <FullCalendar
+        ref={calendarRef}
         plugins={[dayGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
         events={calendarEvents}

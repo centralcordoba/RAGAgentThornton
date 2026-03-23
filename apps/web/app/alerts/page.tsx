@@ -1,17 +1,43 @@
 // ============================================================================
 // FILE: apps/web/app/alerts/page.tsx
-// Alerts management page — list all alerts with HITL actions.
+// Alerts management page — fetches real data from API.
 // ============================================================================
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertsPanel } from '@/components/client/AlertsPanel';
 import type { AlertItem } from '@/components/client/AlertsPanel';
-import { Badge } from '@/components/ui/Badge';
+
+const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
 
 export default function AlertsPage() {
-  const [alerts] = useState<AlertItem[]>(getMockAlerts());
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchAlerts() {
+      setLoading(true);
+      try {
+        const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'];
+        const res = await fetch(`${API_BASE}/api/alerts?pageSize=50`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        if (res.ok) {
+          const body = await res.json();
+          setAlerts((body.data ?? []) as AlertItem[]);
+        }
+      } catch {
+        // API not available
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAlerts();
+  }, []);
 
   const stats = {
     total: alerts.length,
@@ -20,14 +46,34 @@ export default function AlertsPage() {
     acknowledged: alerts.filter((a) => a.status === 'ACKNOWLEDGED').length,
   };
 
+  const handleAcknowledge = useCallback(async (id: string) => {
+    try {
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+      const res = await fetch(`${API_BASE}/api/alerts/${id}/ack`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ acknowledgedBy: 'user-dev-001' }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setAlerts((prev) => prev.map((a) => (a.id === id ? updated : a)));
+      }
+    } catch {
+      // Error acknowledging
+    }
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Gestión de Alertas</h1>
+          <h1 className="text-xl font-bold text-gray-900">Gestion de Alertas</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Revisión HITL, aprobación y seguimiento de alertas regulatorias
+            Revision HITL, aprobacion y seguimiento de alertas regulatorias
           </p>
         </div>
       </div>
@@ -52,31 +98,122 @@ export default function AlertsPage() {
         </div>
       </div>
 
+      {/* HITL Flow Diagram */}
+      <div className="card px-6 py-5">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+          Flujo de aprobacion (Human-in-the-Loop)
+        </h3>
+
+        {/* Flow steps */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Step 1 */}
+          <div className="flex-1 text-center">
+            <div className="mx-auto w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center mb-2">
+              <span className="text-amber-600 text-lg font-bold">1</span>
+            </div>
+            <p className="text-xs font-semibold text-gray-900">Pendiente</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">PENDING_REVIEW</p>
+            <div className="mt-2 inline-block px-2 py-0.5 rounded bg-amber-50 text-[10px] text-amber-700 font-medium">
+              Alerta HIGH generada
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex flex-col items-center flex-shrink-0 -mt-4">
+            <span className="text-gray-300 text-xl">&#8594;</span>
+            <span className="text-[9px] text-gray-400 mt-0.5 bg-blue-50 px-1.5 py-0.5 rounded font-medium text-blue-600">
+              Aprobar
+            </span>
+            <span className="text-[9px] text-gray-400">PROFESSIONAL / ADMIN</span>
+          </div>
+
+          {/* Step 2 */}
+          <div className="flex-1 text-center">
+            <div className="mx-auto w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+              <span className="text-blue-600 text-lg font-bold">2</span>
+            </div>
+            <p className="text-xs font-semibold text-gray-900">Aprobada</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">APPROVED</p>
+            <div className="mt-2 inline-block px-2 py-0.5 rounded bg-blue-50 text-[10px] text-blue-700 font-medium">
+              GT Professional valido
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex flex-col items-center flex-shrink-0 -mt-4">
+            <span className="text-gray-300 text-xl">&#8594;</span>
+            <span className="text-[9px] text-gray-400 mt-0.5 bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-600">
+              Auto
+            </span>
+            <span className="text-[9px] text-gray-400">Email / Teams / SSE</span>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex-1 text-center">
+            <div className="mx-auto w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center mb-2">
+              <span className="text-indigo-600 text-lg font-bold">3</span>
+            </div>
+            <p className="text-xs font-semibold text-gray-900">Enviada</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">SENT</p>
+            <div className="mt-2 inline-block px-2 py-0.5 rounded bg-indigo-50 text-[10px] text-indigo-700 font-medium">
+              Notificada al cliente
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex flex-col items-center flex-shrink-0 -mt-4">
+            <span className="text-gray-300 text-xl">&#8594;</span>
+            <span className="text-[9px] text-gray-400 mt-0.5 bg-green-50 px-1.5 py-0.5 rounded font-medium text-green-600">
+              Confirmar
+            </span>
+            <span className="text-[9px] text-gray-400">Cualquier rol</span>
+          </div>
+
+          {/* Step 4 */}
+          <div className="flex-1 text-center">
+            <div className="mx-auto w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mb-2">
+              <span className="text-green-600 text-lg font-bold">4</span>
+            </div>
+            <p className="text-xs font-semibold text-gray-900">Confirmada</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">ACKNOWLEDGED</p>
+            <div className="mt-2 inline-block px-2 py-0.5 rounded bg-green-50 text-[10px] text-green-700 font-medium">
+              Cliente confirmo recepcion
+            </div>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-6 text-[10px] text-gray-400">
+          <span>
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1" />
+            Alertas HIGH requieren aprobacion de GT Professional antes de enviarse al cliente
+          </span>
+          <span>
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />
+            Alertas MEDIUM/LOW se envian directamente (sin paso de aprobacion)
+          </span>
+        </div>
+      </div>
+
       {/* Alerts panel */}
-      <AlertsPanel
-        alerts={alerts}
-        onAcknowledge={async (id) => {
-          // In production: api.alerts.acknowledge(id, { acknowledgedBy: userId })
-          console.log('ACK:', id);
-        }}
-        onBulkAcknowledge={async (ids) => {
-          console.log('BULK ACK:', ids);
-        }}
-        userRole="PROFESSIONAL"
-      />
+      {loading ? (
+        <div className="card p-12 text-center">
+          <p className="text-sm text-gray-500">Cargando alertas...</p>
+        </div>
+      ) : alerts.length === 0 ? (
+        <div className="card p-12 text-center">
+          <p className="text-sm text-gray-500">No hay alertas registradas</p>
+        </div>
+      ) : (
+        <AlertsPanel
+          alerts={alerts}
+          onAcknowledge={handleAcknowledge}
+          onBulkAcknowledge={async (ids) => {
+            for (const id of ids) await handleAcknowledge(id);
+          }}
+          userRole="PROFESSIONAL"
+        />
+      )}
     </div>
   );
-}
-
-function getMockAlerts(): AlertItem[] {
-  return [
-    { id: 'a-1', changeId: 'c-1', message: 'AFIP RG 5616 — Nuevo régimen de retenciones IVA afecta operaciones de Acme Financial en Argentina. Plazo: 30 días para adecuar sistemas.', impactLevel: 'HIGH', status: 'PENDING_REVIEW', channel: 'EMAIL', country: 'AR', createdAt: '2026-03-14T14:30:00Z', sentAt: null, acknowledgedAt: null, reviewedBy: null },
-    { id: 'a-2', changeId: 'c-2', message: 'SEC Rule 10b-5 Amendment requiere actualización de divulgación de derivados para Q2 2026. Acme Financial tiene exposición notional >$100M.', impactLevel: 'HIGH', status: 'PENDING_REVIEW', channel: 'EMAIL', country: 'US', createdAt: '2026-03-12T18:00:00Z', sentAt: null, acknowledgedAt: null, reviewedBy: null },
-    { id: 'a-3', changeId: 'c-6', message: 'DORA Implementation Technical Standards publicados. BankCo EU debe cumplir requisitos de resiliencia operativa digital antes de julio 2026.', impactLevel: 'HIGH', status: 'SENT', channel: 'EMAIL', country: 'EU', createdAt: '2026-03-05T10:00:00Z', sentAt: '2026-03-05T12:00:00Z', acknowledgedAt: null, reviewedBy: 'user-pro-001' },
-    { id: 'a-4', changeId: 'c-3', message: 'Receita Federal modifica DCTF simplificada — verificar impacto en filial brasileña de GlobalTrade Inc.', impactLevel: 'MEDIUM', status: 'SENT', channel: 'TEAMS', country: 'BR', createdAt: '2026-03-13T12:00:00Z', sentAt: '2026-03-13T12:05:00Z', acknowledgedAt: null, reviewedBy: null },
-    { id: 'a-5', changeId: 'c-4', message: 'SAT actualiza CFDI 4.0 — MexiFinance debe actualizar validación de RFC receptor.', impactLevel: 'MEDIUM', status: 'ACKNOWLEDGED', channel: 'TEAMS', country: 'MX', createdAt: '2026-03-09T08:00:00Z', sentAt: '2026-03-09T08:05:00Z', acknowledgedAt: '2026-03-10T10:00:00Z', reviewedBy: null },
-    { id: 'a-6', changeId: 'c-5', message: 'CNMV actualiza requisitos ESG — impacto menor en fondos gestionados por IberiaCapital.', impactLevel: 'MEDIUM', status: 'SENT', channel: 'SSE', country: 'ES', createdAt: '2026-03-07T09:00:00Z', sentAt: '2026-03-07T09:00:00Z', acknowledgedAt: null, reviewedBy: null },
-    { id: 'a-7', changeId: 'c-7', message: 'BOE corrección modelo 303 IVA — cambio menor en instrucciones. Solo informativo.', impactLevel: 'LOW', status: 'ACKNOWLEDGED', channel: 'SSE', country: 'ES', createdAt: '2026-03-08T09:00:00Z', sentAt: '2026-03-08T09:00:00Z', acknowledgedAt: '2026-03-08T14:00:00Z', reviewedBy: null },
-    { id: 'a-8', changeId: 'c-8', message: 'CNV Resolución 1002 — Nuevo reporte de activos digitales para fondos argentinos.', impactLevel: 'MEDIUM', status: 'PENDING_REVIEW', channel: 'EMAIL', country: 'AR', createdAt: '2026-03-11T10:00:00Z', sentAt: null, acknowledgedAt: null, reviewedBy: null },
-  ];
 }

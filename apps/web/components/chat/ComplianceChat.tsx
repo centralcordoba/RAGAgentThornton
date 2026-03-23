@@ -147,14 +147,13 @@ export function ComplianceChat({
     try {
       abortRef.current = new AbortController();
 
+      const chatToken = (typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null) ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
-          ...(typeof window !== 'undefined' && sessionStorage.getItem('auth_token')
-            ? { Authorization: `Bearer ${sessionStorage.getItem('auth_token')}` }
-            : {}),
+          ...(chatToken ? { Authorization: `Bearer ${chatToken}` } : {}),
         },
         body: JSON.stringify({
           clientId: clientId ?? '',

@@ -21,9 +21,12 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = typeof window !== 'undefined'
-    ? sessionStorage.getItem('auth_token')
+  // Auth: use dev token from env, or sessionStorage token
+  const devToken = process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+  const sessionToken = typeof window !== 'undefined'
+    ? sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null
     : null;
+  const token = sessionToken ?? devToken;
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -121,14 +124,14 @@ export const api = {
     test: (data: TestSourceData) =>
       request<SourceTestResultData>('/api/sources/test', { method: 'POST', body: JSON.stringify(data) }),
     trigger: (id: string): EventSource => {
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null : null;
       // SSE via POST — use fetch + ReadableStream
       return new EventSource(
         `${API_BASE}/api/sources/${id}/trigger`,
       );
     },
     triggerFetch: async (id: string): Promise<Response> => {
-      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null : null;
       return fetch(`${API_BASE}/api/sources/${id}/trigger`, {
         method: 'POST',
         headers: {

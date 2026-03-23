@@ -29,8 +29,7 @@ interface SelectedCell {
   readonly topChange: string;
 }
 
-const JURISDICTIONS = ['US', 'EU', 'ES', 'MX', 'AR', 'BR'] as const;
-const AREAS = ['Financiero', 'Datos/GDPR', 'Laboral', 'Ambiental', 'Fiscal'] as const;
+const AREAS = ['Financiero', 'Datos/GDPR', 'Laboral', 'Ambiental', 'Fiscal', 'Sostenibilidad'] as const;
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
@@ -46,8 +45,8 @@ export function ImpactHeatmap() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = sessionStorage.getItem('auth_token');
-        const res = await fetch(`${API_BASE}/api/impact/heatmap?days=30`, {
+        const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+        const res = await fetch(`${API_BASE}/api/impact/heatmap?days=730`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {
@@ -62,6 +61,10 @@ export function ImpactHeatmap() {
     };
     fetchData();
   }, []);
+
+  // Derive jurisdictions dynamically from real data (no hardcoded AR, MX)
+  const jurisdictions = Array.from(new Set(matrix.map((c) => c.jurisdiction))).sort();
+  const activeAreas = AREAS.filter((area) => matrix.some((c) => c.area === area));
 
   const getCell = (jur: string, area: string): HeatmapCell | undefined =>
     matrix.find((c) => c.jurisdiction === jur && c.area === area);
@@ -102,13 +105,73 @@ export function ImpactHeatmap() {
           </div>
         </div>
 
-        <div className="p-4 overflow-x-auto">
+        {/* Score explanation */}
+        <div className="px-4 pt-3 pb-1">
+          <details className="group">
+            <summary className="flex items-center gap-2 cursor-pointer text-xs text-gray-400 hover:text-gray-600 transition-colors select-none">
+              <svg className="h-3.5 w-3.5 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+              Como se calcula el score?
+            </summary>
+            <div className="mt-3 mb-2 p-4 rounded-lg bg-gray-50 border border-gray-100">
+              {/* Formula */}
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-700 mb-2">Score de riesgo (0-100)</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-red-100 text-red-700 text-[11px] font-mono font-semibold">
+                      HIGH x25
+                    </span>
+                    <span className="text-gray-400 text-xs">+</span>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-100 text-amber-700 text-[11px] font-mono font-semibold">
+                      MEDIUM x10
+                    </span>
+                    <span className="text-gray-400 text-xs">+</span>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-200 text-gray-600 text-[11px] font-mono font-semibold">
+                      cada cambio x3
+                    </span>
+                    <span className="text-gray-400 text-xs">=</span>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-brand-100 text-brand-800 text-[11px] font-mono font-semibold">
+                      Score (max 100)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scale visual */}
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="flex items-center gap-0 h-3 rounded-full overflow-hidden">
+                  <div className="h-full flex-1" style={{ background: 'linear-gradient(to right, #bbf7d0, #fef08a)' }} />
+                  <div className="h-full flex-1" style={{ background: 'linear-gradient(to right, #fef08a, #fca5a5)' }} />
+                  <div className="h-full flex-1" style={{ background: 'linear-gradient(to right, #fca5a5, #dc2626)' }} />
+                </div>
+                <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                  <span>0 — Sin actividad</span>
+                  <span>30 — Bajo</span>
+                  <span>70 — Alto</span>
+                  <span>100 — Critico</span>
+                </div>
+              </div>
+
+              {/* Example */}
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-[11px] text-gray-500">
+                  <span className="font-semibold text-gray-600">Ejemplo:</span>{' '}
+                  EU / Financiero = <span className="font-mono font-semibold text-red-600">100</span> porque tiene
+                  4 regulaciones HIGH (DORA, SFDR, etc.) = 4 x 25 = 100.
+                  Click en una celda para ver el analisis detallado.
+                </p>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div className="p-4 pt-2 overflow-x-auto">
           <table className="w-full">
             {/* Column headers — countries */}
             <thead>
               <tr>
                 <th className="p-2 text-left text-xs font-medium text-gray-500 w-32" />
-                {JURISDICTIONS.map((jur) => (
+                {jurisdictions.map((jur) => (
                   <th key={jur} className="p-2 text-center">
                     <div className="flex flex-col items-center gap-1">
                       <CountryFlag code={jur} size="sm" />
@@ -121,12 +184,12 @@ export function ImpactHeatmap() {
 
             {/* Rows — areas */}
             <tbody>
-              {AREAS.map((area) => (
+              {activeAreas.map((area) => (
                 <tr key={area}>
                   <td className="p-2 text-xs font-medium text-gray-600 whitespace-nowrap">
                     {area}
                   </td>
-                  {JURISDICTIONS.map((jur) => {
+                  {jurisdictions.map((jur) => {
                     const cell = getCell(jur, area);
                     const score = cell?.score ?? 0;
                     const isHovered = hoveredCell?.jurisdiction === jur && hoveredCell?.area === area;

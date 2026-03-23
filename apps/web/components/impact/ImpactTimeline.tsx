@@ -34,13 +34,11 @@ interface TimelinePoint {
 const COUNTRY_COLORS: Record<string, string> = {
   US: '#4F2D7F',
   EU: '#008D8F',
-  ES: '#f59e0b',
-  MX: '#10b981',
-  AR: '#3b82f6',
   BR: '#ef4444',
+  ES: '#f59e0b',
 };
 
-const AREAS = ['Todos', 'Financiero', 'Datos/GDPR', 'Laboral', 'Ambiental', 'Fiscal'] as const;
+const AREAS = ['Todos', 'Financiero', 'Datos/GDPR', 'Ambiental', 'Fiscal', 'Sostenibilidad'] as const;
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
@@ -52,14 +50,14 @@ export function ImpactTimeline() {
   const [loading, setLoading] = useState(true);
   const [selectedArea, setSelectedArea] = useState('Todos');
   const [selectedCountries, setSelectedCountries] = useState<Set<string>>(
-    new Set(['US', 'EU', 'ES', 'MX', 'AR', 'BR']),
+    new Set(Object.keys(COUNTRY_COLORS)),
   );
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = sessionStorage.getItem('auth_token');
-        const res = await fetch(`${API_BASE}/api/impact/timeline?days=90`, {
+        const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+        const res = await fetch(`${API_BASE}/api/impact/timeline?days=730`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {

@@ -37,7 +37,7 @@ export function Sidebar() {
   useEffect(() => {
     // Read role from session token (JWT payload)
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]!));
         setUserRole(payload.role ?? null);

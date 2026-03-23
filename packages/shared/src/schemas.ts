@@ -85,7 +85,7 @@ export const ListRegulationsSchema = z.object({
 }).merge(PaginationSchema);
 
 export const AcknowledgeAlertSchema = z.object({
-  acknowledgedBy: z.string().uuid(),
+  acknowledgedBy: z.string().min(1),
   notes: z.string().max(1000).optional(),
 });
 

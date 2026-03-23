@@ -70,16 +70,31 @@ export function ImpactDrawer({ jurisdiction, area, score, onClose }: Props) {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    const changeId = `${jurisdiction}-${area}-${Date.now()}`;
-    const token = sessionStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
     const runAnalysis = async () => {
       try {
+        // Find a real regulation ID for this jurisdiction + area
+        const regRes = await fetch(
+          `${API_BASE}/api/regulations?country=${encodeURIComponent(jurisdiction)}&pageSize=1`,
+          { headers: authHeaders },
+        );
+        let changeId: string | null = null;
+        if (regRes.ok) {
+          const regData = await regRes.json();
+          changeId = regData.data?.[0]?.id ?? null;
+        }
+
+        if (!changeId) {
+          setError(`No se encontraron regulaciones para ${jurisdiction}`);
+          setIsAnalyzing(false);
+          return;
+        }
+
         const res = await fetch(`${API_BASE}/api/impact/analyze/${changeId}`, {
           method: 'POST',
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
+          headers: authHeaders,
         });
 
         if (!res.ok || !res.body) {
@@ -137,8 +152,9 @@ export function ImpactDrawer({ jurisdiction, area, score, onClose }: Props) {
     setApproving(true);
 
     try {
-      const token = sessionStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE}/api/impact/reports/${report.id}/approve`, {
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+      const reportId = report.changeId ?? report.id;
+      const res = await fetch(`${API_BASE}/api/impact/reports/${reportId}/approve`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -170,8 +186,9 @@ export function ImpactDrawer({ jurisdiction, area, score, onClose }: Props) {
     setExporting(true);
 
     try {
-      const token = sessionStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE}/api/impact/reports/${report.id}/export-pdf`, {
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+      const reportId = report.changeId ?? report.id;
+      const res = await fetch(`${API_BASE}/api/impact/reports/${reportId}/export-pdf`, {
         method: 'POST',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

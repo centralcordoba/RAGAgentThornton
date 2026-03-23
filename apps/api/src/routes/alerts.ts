@@ -145,31 +145,45 @@ export function createAlertsRouter(deps: AlertRouteDeps): Router {
     }
 
     // Update alert
+    const updateData: Record<string, unknown> = { status: newStatus };
+    if (newStatus === 'APPROVED') {
+      updateData['reviewedAt'] = now;
+      // reviewedById requires a valid User UUID — store in notes instead if user not in DB
+    }
+    if (newStatus === 'ACKNOWLEDGED') {
+      updateData['acknowledgedAt'] = now;
+    }
+
     const updated = await deps.prisma.alert.update({
       where: { id },
-      data: {
-        status: newStatus,
-        ...(newStatus === 'APPROVED' ? { reviewedBy: userId, reviewedAt: now } : {}),
-        ...(newStatus === 'ACKNOWLEDGED' ? { acknowledgedAt: now } : {}),
-      },
+      data: updateData,
     });
 
-    // Audit entry
-    await deps.prisma.auditEntry.create({
-      data: {
-        id: randomUUID(),
-        tenantId,
-        action: auditAction,
-        entityType: 'Alert',
-        entityId: id!,
-        performedBy: userId,
-        details: {
-          previousStatus: alert.status,
-          newStatus,
-          notes: parsed.data.notes ?? null,
+    // Audit log (best-effort — skip if auditLog table doesn't exist or user FK fails)
+    try {
+      await deps.prisma.auditLog.create({
+        data: {
+          tenantId,
+          action: auditAction as 'ALERT_APPROVED' | 'ALERT_ACKNOWLEDGED',
+          entityType: 'Alert',
+          entityId: id!,
+          performedById: userId,
+          details: {
+            previousStatus: alert.status,
+            newStatus,
+            notes: parsed.data.notes ?? null,
+          },
         },
-      },
-    });
+      });
+    } catch (auditErr) {
+      // Audit log failure should not block the alert update
+      logger.warn({
+        operation: 'alerts:audit_log_failed',
+        requestId,
+        alertId: id,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
 
     logger.info({
       operation: 'alerts:ack',

@@ -3,6 +3,12 @@
 // BOE (Boletín Oficial del Estado) Spain connector — XML feed.
 // Filters: Section I (leyes), II (decretos), III (resoluciones).
 // Polling: every 1 hour.
+//
+// Real data endpoints (no API key required):
+//   - RSS:        https://www.boe.es/rss/BOE.xml
+//   - Daily XML:  https://www.boe.es/boe/dias/YYYY/MM/DD/index.xml
+//   - Doc XML:    https://www.boe.es/diario_boe/xml.php?id=BOE-A-YYYY-XXXX
+//   - Doc HTML:   https://www.boe.es/diario_boe/txt.php?id=BOE-A-YYYY-XXXX
 // ============================================================================
 
 import { BaseIngestionJob } from '../BaseIngestionJob.js';
@@ -31,6 +37,18 @@ const MONITORED_SECTIONS: Record<string, string> = {
 
 const BOE_RSS_URL = 'https://www.boe.es/rss/BOE.xml';
 const BOE_XML_API_URL = 'https://www.boe.es/datosabiertos/api/boe/dias/';
+
+/**
+ * Keywords for filtering relevant BOE documents.
+ * Used to find documents related to energy, finance, and environment.
+ */
+export const RELEVANT_KEYWORDS = [
+  'energía', 'eficiencia energética', 'renovables', 'eléctric',
+  'mercados financieros', 'supervisión', 'CNMV', 'valores',
+  'medio ambiente', 'residuos', 'emisiones', 'climático',
+  'fiscal', 'tributario', 'AEAT', 'hacienda',
+  'transposición', 'directiva', 'reglamento europeo',
+] as const;
 
 // ---------------------------------------------------------------------------
 // XML parsing helpers
@@ -127,6 +145,160 @@ export class BoeSpainConnector extends BaseIngestionJob {
       maxRequestsPerSecond: this.config.maxRequestsPerSecond,
     });
   }
+
+  // -------------------------------------------------------------------------
+  // Multi-day fetcher (for seed and historical data)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fetch BOE documents from the last N days.
+   * Uses the structured XML API for each day.
+   */
+  async fetchLastNDays(days: number): Promise<readonly RawDocument[]> {
+    const allDocs: RawDocument[] = [];
+    const now = new Date();
+
+    for (let i = 0; i < days; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+
+      // Skip weekends — BOE typically doesn't publish on Sat/Sun
+      const dayOfWeek = date.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+      // BOE API uses YYYY/MM/DD format
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}${mm}${dd}`;
+      const dateSlash = `${yyyy}/${mm}/${dd}`;
+
+      try {
+        // Try structured XML API first: https://www.boe.es/boe/dias/YYYY/MM/DD/index.xml
+        const apiUrl = `https://www.boe.es/boe/dias/${dateSlash}/index.xml`;
+        const xml = await this.http.fetchText(apiUrl);
+        const items = parseBoeApiItems(xml);
+
+        for (const item of items) {
+          allDocs.push({
+            externalId: item.id || `boe-${dateStr}-${allDocs.length}`,
+            title: item.titulo,
+            rawContent: item.titulo,
+            sourceUrl: item.urlHtml || item.urlPdf || `${BOE_CONFIG.baseUrl}/diario_boe/`,
+            publishedDate: item.fechaPublicacion ? new Date(item.fechaPublicacion) : date,
+            metadata: {
+              seccion: item.seccion,
+              seccionName: MONITORED_SECTIONS[item.seccion] ?? item.seccion,
+              departamento: item.departamento,
+              boeId: item.id,
+            },
+          });
+        }
+
+        this.logger.debug({
+          operation: 'boe:fetch_day',
+          date: dateStr,
+          itemsFound: items.length,
+          result: 'success',
+        });
+      } catch (err) {
+        this.logger.warn({
+          operation: 'boe:fetch_day',
+          date: dateStr,
+          result: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // If no docs found via daily XML, fallback to RSS feed
+    if (allDocs.length === 0) {
+      this.logger.info({
+        operation: 'boe:fetch_days_fallback_rss',
+        reason: 'No documents from daily XML API, trying RSS feed',
+      });
+
+      try {
+        const rssXml = await this.http.fetchText(BOE_RSS_URL);
+        const rssItems = parseBoeRssItems(rssXml);
+
+        for (const item of rssItems) {
+          allDocs.push({
+            externalId: item.guid || item.link,
+            title: item.title,
+            rawContent: item.description,
+            sourceUrl: item.link,
+            publishedDate: item.pubDate ? new Date(item.pubDate) : new Date(),
+            metadata: {
+              feedSource: 'BOE_RSS',
+            },
+          });
+        }
+
+        this.logger.info({
+          operation: 'boe:fetch_rss_fallback',
+          itemsFound: rssItems.length,
+          result: 'success',
+        });
+      } catch (rssErr) {
+        this.logger.warn({
+          operation: 'boe:fetch_rss_fallback',
+          result: 'error',
+          error: rssErr instanceof Error ? rssErr.message : String(rssErr),
+        });
+      }
+    }
+
+    return allDocs;
+  }
+
+  /**
+   * Fetch full text content of a BOE document by its ID.
+   * Uses: https://www.boe.es/diario_boe/xml.php?id=BOE-A-YYYY-XXXX
+   */
+  async fetchFullText(boeId: string): Promise<string> {
+    // Try XML endpoint first, fall back to HTML
+    try {
+      const xmlUrl = `https://www.boe.es/diario_boe/xml.php?id=${boeId}`;
+      const xml = await this.http.fetchText(xmlUrl);
+
+      // Extract text content from XML
+      const textMatch = /<texto[^>]*>([\s\S]*?)<\/texto>/i.exec(xml);
+      if (textMatch?.[1]) {
+        return textMatch[1]
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+          .slice(0, 32_000);
+      }
+      return xml.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 32_000);
+    } catch {
+      // Fallback to HTML version
+      const htmlUrl = `https://www.boe.es/diario_boe/txt.php?id=${boeId}`;
+      const html = await this.http.fetchText(htmlUrl);
+      return html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 32_000);
+    }
+  }
+
+  /**
+   * Filter documents by relevance keywords.
+   */
+  filterByKeywords(docs: readonly RawDocument[]): readonly RawDocument[] {
+    return docs.filter((doc) => {
+      const lower = doc.title.toLowerCase();
+      return RELEVANT_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Standard connector pipeline (fetchDocuments)
+  // -------------------------------------------------------------------------
 
   protected async fetchDocuments(requestId: string): Promise<readonly RawDocument[]> {
     const startTime = Date.now();
@@ -243,7 +415,8 @@ function detectBoeAreas(title: string, seccion: string): readonly string[] {
     'corporate': ['MERCANTIL', 'SOCIETAR', 'EMPRESA'],
     'banking': ['BANCO', 'FINANCIER', 'CREDIT', 'CNMV', 'VALORES'],
     'data-protection': ['PROTECCIÓN DE DATOS', 'PRIVACIDAD', 'AEPD'],
-    'environmental': ['MEDIOAMBIENT', 'CLIMÁT', 'TRANSICIÓN ECOLÓG'],
+    'energy': ['ENERGÍA', 'ELÉCTRIC', 'RENOVABLE', 'EFICIENCIA ENERGÉTICA', 'GAS NATURAL'],
+    'environmental': ['MEDIOAMBIENT', 'CLIMÁT', 'TRANSICIÓN ECOLÓG', 'EMISIONES', 'RESIDUOS'],
   };
 
   for (const [area, kws] of Object.entries(keywords)) {

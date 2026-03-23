@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RegWatch AI — Azure Infrastructure Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --brand: #1E3A5F;
+    --accent: #2E6DA4;
+    --accent2: #3B82F6;
+    --light: #D6E8F7;
+    --lighter: #EBF4FB;
+    --bg: #0A0F1E;
+    --bg2: #0F1729;
+    --bg3: #162035;
+    --surface: #1A2540;
+    --surface2: #1F2D4A;
+    --text: #E2E8F0;
+    --text2: #94A3B8;
+    --green: #22C55E;
+    --green-dim: #166534;
+    --orange: #F97316;
+    --red: #EF4444;
+    --yellow: #EAB308;
+    --border: rgba(46,109,164,0.25);
+    --glow: rgba(59,130,246,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ─── HEADER ─────────────────────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, #0A0F1E 0%, #0D1B35 50%, #0A0F1E 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -10%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(46,109,164,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -30%;
+    right: 5%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(46,109,164,0.15); border: 1px solid rgba(46,109,164,0.4);
+    border-radius: 20px; padding: 6px 16px; margin-bottom: 24px;
+    font-size: 12px; font-weight: 600; color: #90C6F0; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .hero-badge::before { content: ''; width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+  .hero h1 { font-size: clamp(32px, 5vw, 56px); font-weight: 700; color: #fff; line-height: 1.1; margin-bottom: 16px; }
+  .hero h1 span { color: var(--accent2); }
+  .hero p { font-size: 18px; color: var(--text2); max-width: 600px; }
+  .hero-stats { display: flex; gap: 32px; margin-top: 40px; flex-wrap: wrap; }
+  .stat { text-align: center; }
+  .stat-num { font-size: 32px; font-weight: 700; color: var(--accent2); font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+  /* ─── LAYOUT ─────────────────────────────────────────────────────────── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+  .section { padding: 60px 32px; max-width: 1100px; margin: 0 auto; }
+
+  /* ─── SECTION TITLES ─────────────────────────────────────────────────── */
+  .section-title {
+    font-size: 13px; font-weight: 600; color: var(--accent2);
+    text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;
+  }
+  .section-h2 {
+    font-size: clamp(24px, 3vw, 36px); font-weight: 700; color: #fff;
+    margin-bottom: 12px; line-height: 1.2;
+  }
+  .section-desc { font-size: 16px; color: var(--text2); max-width: 600px; margin-bottom: 48px; }
+
+  /* ─── ARCHITECTURE DIAGRAM ───────────────────────────────────────────── */
+  .arch-diagram {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 64px;
+  }
+  .arch-diagram::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+  }
+
+  .arch-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    position: relative;
+  }
+
+  .arch-layer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .arch-layer.full { grid-column: 1 / -1; }
+  .arch-layer-title {
+    font-size: 11px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .arch-layer-title::before { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .arch-layer-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .arch-nodes { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .arch-node {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; min-width: 110px;
+    transition: all 0.2s; cursor: default;
+  }
+  .arch-node:hover {
+    border-color: var(--accent2);
+    box-shadow: 0 0 20px var(--glow);
+    transform: translateY(-2px);
+  }
+  .arch-node-icon { font-size: 28px; }
+  .arch-node-name { font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }
+  .arch-node-tier { font-size: 10px; color: var(--text2); text-align: center; }
+  .arch-node.highlight { border-color: rgba(234,179,8,0.4); background: rgba(234,179,8,0.05); }
+  .arch-node.highlight .arch-node-name { color: var(--yellow); }
+
+  /* ─── FLOW DIAGRAM ───────────────────────────────────────────────────── */
+  .flow-diagram {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 64px;
+  }
+  .flow-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 32px; }
+
+  .flow-steps {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .flow-step {
+    flex: 1; min-width: 120px;
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: '→';
+    position: absolute; right: -12px; top: 28px;
+    font-size: 18px; color: var(--accent2); z-index: 2;
+    font-weight: 700;
+  }
+  .flow-box {
+    width: 100%; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 10px; text-align: center; margin-right: 16px;
+  }
+  .flow-num {
+    width: 28px; height: 28px; background: var(--accent2);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff; margin: 0 auto 10px;
+  }
+  .flow-icon { font-size: 22px; margin-bottom: 6px; }
+  .flow-name { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .flow-desc { font-size: 10px; color: var(--text2); }
+
+  /* ─── STEPS ──────────────────────────────────────────────────────────── */
+  .steps-grid { display: flex; flex-direction: column; gap: 24px; }
+
+  .step-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+  .step-card:hover { box-shadow: 0 0 30px var(--glow); }
+
+  .step-header {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: center;
+    padding: 20px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    gap: 20px;
+  }
+  .step-num {
+    width: 56px; height: 56px;
+    background: linear-gradient(135deg, var(--brand), var(--accent2));
+    border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.6); letter-spacing: 1px; text-transform: uppercase;
+  }
+  .step-num strong { font-size: 24px; color: #fff; font-weight: 700; line-height: 1; }
+  .step-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .step-subtitle { font-size: 13px; color: var(--text2); }
+  .step-badge {
+    padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-free { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .badge-cost { background: rgba(59,130,246,0.1); color: var(--accent2); border: 1px solid rgba(59,130,246,0.25); }
+  .badge-warn { background: rgba(234,179,8,0.1); color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
+  .badge-critical { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+  .step-body { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .step-body.single { grid-template-columns: 1fr; }
+
+  .portal-steps { }
+  .portal-label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .portal-list { display: flex; flex-direction: column; gap: 8px; }
+  .portal-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg3); border-radius: 8px;
+    border-left: 3px solid var(--border);
+    font-size: 13px; color: var(--text);
+    transition: border-color 0.2s;
+  }
+  .portal-item:hover { border-left-color: var(--accent2); }
+  .portal-item-num {
+    width: 20px; height: 20px; min-width: 20px;
+    background: var(--accent); border-radius: 50%;
+    font-size: 10px; font-weight: 700; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .step-info { display: flex; flex-direction: column; gap: 10px; }
+  .info-row {
+    display: grid; grid-template-columns: 140px 1fr;
+    background: var(--bg3); border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .info-label {
+    padding: 10px 14px; background: var(--surface2);
+    font-size: 11px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center;
+  }
+  .info-value {
+    padding: 10px 14px;
+    font-size: 12px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+  }
+  .info-value.green { color: var(--green); }
+  .info-value.yellow { color: var(--yellow); }
+
+  .code-block {
+    background: #0D1117;
+    border: 1px solid rgba(46,109,164,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #A8D8A8;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.7;
+    grid-column: 1 / -1;
+  }
+  .code-block .comment { color: #6E7B8B; }
+  .code-block .cmd { color: #79C0FF; }
+  .code-block .flag { color: #FFA657; }
+  .code-block .string { color: #A5D6FF; }
+
+  /* ─── COST TABLE ─────────────────────────────────────────────────────── */
+  .cost-section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 64px;
+  }
+  .cost-table { width: 100%; border-collapse: collapse; }
+  .cost-table th {
+    background: var(--surface); color: var(--text2);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    padding: 12px 16px; text-align: left; border-bottom: 2px solid var(--border);
+  }
+  .cost-table td {
+    padding: 12px 16px; font-size: 13px; color: var(--text);
+    border-bottom: 1px solid rgba(46,109,164,0.1);
+  }
+  .cost-table tr:hover td { background: var(--surface); }
+  .cost-table tr.total td { background: var(--surface2); font-weight: 700; color: #fff; border-top: 2px solid var(--accent2); }
+  .cost-free { color: var(--green); font-weight: 600; }
+  .cost-paid { color: var(--accent2); }
+  .cost-var { color: var(--yellow); }
+
+  /* ─── VERIFICATION ───────────────────────────────────────────────────── */
+  .verify-section {
+    background: var(--bg2);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 40px;
+  }
+  .verify-title { font-size: 18px; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+  .verify-subtitle { font-size: 14px; color: var(--text2); margin-bottom: 24px; }
+  .checklist { display: flex; flex-direction: column; gap: 8px; }
+  .check-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; background: var(--bg3); border-radius: 8px;
+    font-size: 13px; color: var(--text); border: 1px solid var(--border);
+  }
+  .check-icon { font-size: 16px; flex-shrink: 0; }
+
+  /* ─── BUDGET WARNING ─────────────────────────────────────────────────── */
+  .budget-warning {
+    background: rgba(234,179,8,0.05);
+    border: 1px solid rgba(234,179,8,0.3);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 40px;
+    display: flex; gap: 16px; align-items: flex-start;
+  }
+  .budget-warning-icon { font-size: 28px; flex-shrink: 0; margin-top: 2px; }
+  .budget-warning h3 { font-size: 15px; font-weight: 700; color: var(--yellow); margin-bottom: 6px; }
+  .budget-warning p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* ─── CREDIT CALCULATOR ──────────────────────────────────────────────── */
+  .credit-visual {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 64px;
+  }
+  .credit-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 24px; }
+  .credit-bar-wrap { position: relative; margin-bottom: 32px; }
+  .credit-bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text2); margin-bottom: 8px;
+  }
+  .credit-bar-bg {
+    height: 32px; background: var(--surface);
+    border-radius: 8px; overflow: hidden;
+    display: flex; position: relative;
+    border: 1px solid var(--border);
+  }
+  .credit-segment {
+    height: 100%; display: flex; align-items: center;
+    justify-content: center; font-size: 11px; font-weight: 600;
+    color: rgba(255,255,255,0.9); transition: filter 0.2s;
+    white-space: nowrap; overflow: hidden;
+  }
+  .credit-segment:hover { filter: brightness(1.2); }
+  .seg-demo { background: linear-gradient(135deg, #2E6DA4, #3B82F6); width: 6%; }
+  .seg-mvp  { background: linear-gradient(135deg, #0EA5E9, #38BDF8); width: 55%; }
+  .seg-buff { background: linear-gradient(135deg, #22C55E, #4ADE80); width: 29%; }
+  .seg-spar { background: linear-gradient(135deg, #1E3A5F, #2D4E7A); width: 10%; }
+
+  .credit-legend {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .legend-text { font-size: 12px; color: var(--text2); }
+  .legend-amount { font-size: 14px; font-weight: 700; color: var(--text); }
+
+  /* ─── FOOTER ─────────────────────────────────────────────────────────── */
+  footer {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 32px;
+    text-align: center;
+    color: var(--text2);
+    font-size: 13px;
+  }
+
+  /* ─── RESPONSIVE ─────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .step-header { grid-template-columns: 60px 1fr; }
+    .step-badge { display: none; }
+    .step-body { grid-template-columns: 1fr; }
+    .arch-grid { grid-template-columns: 1fr; }
+    .credit-legend { grid-template-columns: 1fr 1fr; }
+    .flow-steps { flex-direction: column; }
+    .flow-step::after { display: none; }
+    .hero-stats { gap: 20px; }
+  }
+
+  /* ─── SCROLL ANIMATIONS ──────────────────────────────────────────────── */
+  .fade-in { opacity: 0; transform: translateY(20px); transition: opacity 0.5s, transform 0.5s; }
+  .fade-in.visible { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">Azure Infrastructure Setup Guide</div>
+    <h1>RegWatch <span>AI</span><br>Azure Setup</h1>
+    <p>Guía completa paso a paso para crear los 10 recursos Azure necesarios para deployar RegWatch AI desde cero.</p>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-num">11</div><div class="stat-label">Pasos</div></div>
+      <div class="stat"><div class="stat-num">~45</div><div class="stat-label">Minutos</div></div>
+      <div class="stat"><div class="stat-num">$59</div><div class="stat-label">Infra/mes</div></div>
+      <div class="stat"><div class="stat-num">$1K</div><div class="stat-label">Crédito total</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ARCHITECTURE DIAGRAM -->
+<div class="section fade-in">
+  <div class="section-title">Arquitectura</div>
+  <div class="section-h2">Mapa de recursos Azure</div>
+  <div class="section-desc">Todos los recursos viven dentro del mismo Resource Group. Cada capa tiene un rol específico en el stack de RegWatch AI.</div>
+
+  <div class="arch-diagram">
+    <div class="arch-grid">
+
+      <div class="arch-layer full">
+        <div class="arch-layer-title">⚙️ Seguridad & Configuración</div>
+        <div class="arch-nodes">
+          <div class="arch-node highlight">
+            <div class="arch-node-icon">🔑</div>
+            <div class="arch-node-name">Key Vault</div>
+            <div class="arch-node-tier">regwatch-kv-dev</div>
+          </div>
+          <div class="arch-node">
+            <div class="arch-node-icon">📊</div>
+            <div class="arch-node-name">App Insights</div>
+            <div class="arch-node-tier">Monitoring</div>
+          </div>
+          <div class="arch-node">
+            <div class="arch-node-icon">💰</div>
+            <div class="arch-node-name">Budget Alert</div>
+            <div class="arch-node-tier">$200/mes</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-layer full">
+        <div class="arch-layer-title">🌐 Capa de Presentación</div>
+        <div class="arch-nodes">
+          <div class="arch-node">
+            <div class="arch-node-icon">🖥️</div>
+            <div class="arch-node-name">Container App Web</div>
+            <div class="arch-node-tier">regwatch-web-dev</div>
+          </div>
+          <div class="arch-node">
+            <div class="arch-node-icon">⚡</div>
+            <div class="arch-node-name">Container App API</div>
+            <div class="arch-node-tier">regwatch-api-dev</div>
+          </div>
+          <div class="arch-node">
+            <div class="arch-node-icon">📦</div>
+            <div class="arch-node-name">Container Registry</div>
+            <div class="arch-node-tier">regwatchdevacr</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-title">🧠 Inteligencia Artificial</div>
+        <div class="arch-nodes" style="flex-direction:column">
+          <div class="arch-node" style="width:100%;flex-direction:row;gap:12px;min-width:unset">
+            <div class="arch-node-icon">🤖</div>
+            <div>
+              <div class="arch-node-name">Azure OpenAI</div>
+              <div class="arch-node-tier">GPT-4o-mini + Embeddings</div>
+            </div>
+          </div>
+          <div class="arch-node" style="width:100%;flex-direction:row;gap:12px;min-width:unset">
+            <div class="arch-node-icon">🔍</div>
+            <div>
+              <div class="arch-node-name">AI Search</div>
+              <div class="arch-node-tier">Vectorial + BM25 hybrid</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-title">📨 Mensajería</div>
+        <div class="arch-nodes" style="flex-direction:column">
+          <div class="arch-node" style="width:100%;flex-direction:row;gap:12px;min-width:unset">
+            <div class="arch-node-icon">📬</div>
+            <div>
+              <div class="arch-node-name">Service Bus</div>
+              <div class="arch-node-tier">3 queues: changes / alerts / jobs</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-title">💾 Persistencia</div>
+        <div class="arch-nodes" style="flex-direction:column">
+          <div class="arch-node" style="width:100%;flex-direction:row;gap:12px;min-width:unset">
+            <div class="arch-node-icon">🐘</div>
+            <div>
+              <div class="arch-node-name">PostgreSQL</div>
+              <div class="arch-node-tier">Burstable B1ms</div>
+            </div>
+          </div>
+          <div class="arch-node" style="width:100%;flex-direction:row;gap:12px;min-width:unset">
+            <div class="arch-node-icon">⚡</div>
+            <div>
+              <div class="arch-node-name">Redis Cache</div>
+              <div class="arch-node-tier">Basic C0 — TTL 24h</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- DATA FLOW -->
+  <div class="flow-diagram">
+    <div class="flow-title">🔄 Flujo de datos — pipeline de ingestion</div>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">1</div>
+          <div class="flow-icon">🌐</div>
+          <div class="flow-name">Fuente Oficial</div>
+          <div class="flow-desc">SEC EDGAR / EUR-Lex / BOE</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">2</div>
+          <div class="flow-icon">⚙️</div>
+          <div class="flow-name">Connector</div>
+          <div class="flow-desc">Fetch + parse + diff</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">3</div>
+          <div class="flow-icon">📬</div>
+          <div class="flow-name">Service Bus</div>
+          <div class="flow-desc">Queue: regulatory-changes</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">4</div>
+          <div class="flow-icon">⚡</div>
+          <div class="flow-name">Redis Check</div>
+          <div class="flow-desc">Cache hit? → skip OpenAI</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">5</div>
+          <div class="flow-icon">🤖</div>
+          <div class="flow-name">Azure OpenAI</div>
+          <div class="flow-desc">Embeddings text-3-large</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">6</div>
+          <div class="flow-icon">🔍</div>
+          <div class="flow-name">AI Search</div>
+          <div class="flow-desc">Index vectorial + BM25</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box">
+          <div class="flow-num">7</div>
+          <div class="flow-icon">🐘</div>
+          <div class="flow-name">PostgreSQL</div>
+          <div class="flow-desc">Alert + audit_log</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BUDGET WARNING -->
+<div class="section fade-in" style="padding-top:0">
+  <div class="budget-warning">
+    <div class="budget-warning-icon">⚠️</div>
+    <div>
+      <h3>Configurar el Budget Alert ANTES de crear cualquier recurso</h3>
+      <p>Azure no detiene los recursos cuando se agota el crédito — empieza a cobrar automáticamente. Un scheduler mal configurado que genere embeddings en bucle puede consumir $200 en pocas horas. El budget alert al 80% ($160) te da tiempo de reacción antes de alcanzar el límite.</p>
+    </div>
+  </div>
+</div>
+
+<!-- STEPS -->
+<div class="section fade-in" style="padding-top:0">
+  <div class="section-title">Procedimiento</div>
+  <div class="section-h2">Pasos de creación</div>
+  <div class="section-desc">Seguir el orden exacto — cada recurso depende del anterior.</div>
+
+  <div class="steps-grid">
+
+    <!-- PASO 0 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>0</strong></div>
+        <div><div class="step-title">Configurar Azure CLI</div><div class="step-subtitle">Prerequisito — vincular CLI con la suscripción $1000</div></div>
+        <div class="step-badge badge-warn">Prerequisito</div>
+      </div>
+      <div class="step-body single">
+        <div class="code-block"><span class="comment"># 1. Login — abre el browser</span>
+<span class="cmd">az</span> <span class="flag">login</span>
+
+<span class="comment"># 2. Ver suscripciones disponibles</span>
+<span class="cmd">az</span> account list <span class="flag">--output</span> table
+
+<span class="comment"># 3. Seleccionar la suscripción con $1000</span>
+<span class="cmd">az</span> account set <span class="flag">--subscription</span> <span class="string">"TU-SUBSCRIPTION-ID"</span>
+
+<span class="comment"># 4. Verificar — debe mostrar IsDefault = True</span>
+<span class="cmd">az</span> account show <span class="flag">--output</span> table
+
+<span class="comment"># 5. Configurar defaults</span>
+<span class="cmd">az</span> configure <span class="flag">--defaults</span> location=eastus group=rg-regwatch-dev</div>
+      </div>
+    </div>
+
+    <!-- PASO 1 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>1</strong></div>
+        <div><div class="step-title">Resource Group</div><div class="step-subtitle">Contenedor principal de todos los recursos</div></div>
+        <div class="step-badge badge-free">Gratis</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>portal.azure.com → buscar "Resource Groups" → "+ Create"</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Subscription: tu suscripción con $1000</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Resource group name: <strong>rg-regwatch-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Region: East US</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Review + Create → Create</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Nombre</div><div class="info-value">rg-regwatch-dev</div></div>
+          <div class="info-row"><div class="info-label">Región</div><div class="info-value">East US</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value green">$0 — sin costo propio</div></div>
+          <div class="info-row"><div class="info-label">Propósito</div><div class="info-value">Contiene todos los demás recursos</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 2 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>2</strong></div>
+        <div><div class="step-title">Budget Alert ⚠️</div><div class="step-subtitle">CRÍTICO — hacer ANTES de cualquier otro recurso</div></div>
+        <div class="step-badge badge-critical">Crítico</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>rg-regwatch-dev → "Cost analysis" → "Budgets" → "+ Add"</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Name: regwatch-dev-budget | Reset period: Monthly</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Amount: <strong>$200</strong> mensual (5 meses con $1000)</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Next: Alerts → Type: Actual | % of budget: 80%</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Email: tu dirección de correo → Create</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Alert al</div><div class="info-value yellow">80% = $160 gastados</div></div>
+          <div class="info-row"><div class="info-label">Límite</div><div class="info-value">$200/mes</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value green">$0</div></div>
+          <div class="info-row"><div class="info-label">Por qué</div><div class="info-value">Azure cobra automáticamente al agotar crédito</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 3 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>3</strong></div>
+        <div><div class="step-title">Azure OpenAI</div><div class="step-subtitle">GPT-4o-mini para dev · text-embedding-3-large · GPT-4o solo para demo</div></div>
+        <div class="step-badge badge-cost">Pay-per-use</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Crear el servicio</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Azure OpenAI" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Name: <strong>regwatch-openai-dev</strong> | Region: East US</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Pricing tier: Standard S0 → Review + Create</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>regwatch-openai-dev → Model deployments → + Deploy</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Deploy: gpt-4o-mini (10K tokens/min)</div>
+            <div class="portal-item"><div class="portal-item-num">6</div>Deploy: text-embedding-3-large (10K tokens/min)</div>
+            <div class="portal-item"><div class="portal-item-num">7</div>⚠️ NO deployar gpt-4o todavía — solo el día del demo</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">gpt-4o-mini</div><div class="info-value green">$0.15/1M tokens — para dev</div></div>
+          <div class="info-row"><div class="info-label">gpt-4o</div><div class="info-value yellow">$2.50/1M tokens — solo demo</div></div>
+          <div class="info-row"><div class="info-label">embeddings</div><div class="info-value">$0.000143/1K tokens</div></div>
+          <div class="info-row"><div class="info-label">Ahorro dev</div><div class="info-value green">16x más barato con mini</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 4 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>4</strong></div>
+        <div><div class="step-title">Azure AI Search</div><div class="step-subtitle">Índice vectorial + BM25 hybrid para el pipeline RAG</div></div>
+        <div class="step-badge badge-free">Free F0</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Azure AI Search" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Service name: <strong>regwatch-search-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Pricing tier: <strong>Free F0</strong> ← OBLIGATORIO para demo</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Review + Create → Create</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Una vez creado → Indexes → + Add index → "regulatory-changes"</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Tier demo</div><div class="info-value green">Free F0 = $0</div></div>
+          <div class="info-row"><div class="info-label">Límite F0</div><div class="info-value yellow">50MB índice, 3 índices</div></div>
+          <div class="info-row"><div class="info-label">Tier MVP</div><div class="info-value">Standard S1 = ~$25/mes</div></div>
+          <div class="info-row"><div class="info-label">Índice</div><div class="info-value">regulatory-changes (1536 dims)</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 5 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>5</strong></div>
+        <div><div class="step-title">Container Registry</div><div class="step-subtitle">Almacena las imágenes Docker de la API y el frontend</div></div>
+        <div class="step-badge badge-cost">~$5/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Container Registry" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Registry name: <strong>regwatchdevacr</strong> (sin guiones)</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Pricing plan: Basic → Review + Create → Create</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>regwatchdevacr → Access keys → Admin user → <strong>Enable</strong></div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Guardar: Username y Password (para docker push)</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Login server</div><div class="info-value">regwatchdevacr.azurecr.io</div></div>
+          <div class="info-row"><div class="info-label">Tier</div><div class="info-value">Basic</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$5/mes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 6 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>6</strong></div>
+        <div><div class="step-title">PostgreSQL Flexible Server</div><div class="step-subtitle">Base de datos operacional — alertas, clientes, calendario, audit log</div></div>
+        <div class="step-badge badge-cost">~$15/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure (tarda ~5 min)</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create → "Azure Database for PostgreSQL" → Flexible Server → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Server name: <strong>regwatch-postgres-dev</strong> | Version: 16</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Workload type: <strong>Development</strong> (auto Burstable)</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Compute: Standard_B1ms | Storage: 32 GB</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Auth: PostgreSQL only | Admin: regwatchadmin | Password: [fuerte]</div>
+            <div class="portal-item"><div class="portal-item-num">6</div>Networking: Public access | Allow Azure services: YES | Add current IP: YES</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Tier</div><div class="info-value">Burstable B1ms</div></div>
+          <div class="info-row"><div class="info-label">CPU / RAM</div><div class="info-value">1 vCore / 2GB</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$15/mes</div></div>
+          <div class="info-row"><div class="info-label">⚠️ Guardar</div><div class="info-value yellow">Password no recuperable después</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 7 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>7</strong></div>
+        <div><div class="step-title">Azure Cache for Redis</div><div class="step-subtitle">Cache de embeddings y resultados RAG — reduce costos OpenAI hasta 60%</div></div>
+        <div class="step-badge badge-cost">~$16/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure (tarda ~10 min)</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Azure Cache for Redis" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>DNS name: <strong>regwatch-redis-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Cache type: <strong>Basic C0</strong> (250MB, precio más bajo)</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Review + Create → Create</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">TTL embeddings</div><div class="info-value green">24h — key: sha256(texto)</div></div>
+          <div class="info-row"><div class="info-label">TTL RAG</div><div class="info-value">1h — queries frecuentes</div></div>
+          <div class="info-row"><div class="info-label">Hit rate target</div><div class="info-value green">> 60%</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$16/mes — Basic C0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 8 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>8</strong></div>
+        <div><div class="step-title">Azure Service Bus</div><div class="step-subtitle">Cola de mensajes entre el ingestion pipeline y el alert engine</div></div>
+        <div class="step-badge badge-cost">~$10/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Service Bus" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Namespace: <strong>regwatch-servicebus-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Tier: <strong>Standard</strong> (Basic no soporta topics)</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Una vez creado → Queues → crear: <strong>regulatory-changes</strong></div>
+            <div class="portal-item"><div class="portal-item-num">5</div>+ Queue → crear: <strong>alert-notifications</strong></div>
+            <div class="portal-item"><div class="portal-item-num">6</div>+ Queue → crear: <strong>ingestion-jobs</strong></div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Queues</div><div class="info-value">regulatory-changes | alerts | jobs</div></div>
+          <div class="info-row"><div class="info-label">Tier</div><div class="info-value yellow">Standard — Basic no tiene topics</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$10/mes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 9 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>9</strong></div>
+        <div><div class="step-title">Azure Container Apps</div><div class="step-subtitle">Hosting de API + Web con scale-to-zero automático</div></div>
+        <div class="step-badge badge-cost">~$5/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Crear API + Web</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Container Apps" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Name: <strong>regwatch-api-dev</strong> | Environment → Create new → <strong>cae-regwatch-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Image: Docker Hub / nginx:latest (placeholder)</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>CPU: 0.25 | Memory: 0.5Gi | Ingress: External, port 3000</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Repetir para <strong>regwatch-web-dev</strong> (mismo environment)</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Scale to zero</div><div class="info-value green">min-replicas=0 → $0 sin tráfico</div></div>
+          <div class="info-row"><div class="info-label">Imagen inicial</div><div class="info-value">nginx:latest (placeholder)</div></div>
+          <div class="info-row"><div class="info-label">Reemplazar en</div><div class="info-value">Fase 6 del master prompt</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 10 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>10</strong></div>
+        <div><div class="step-title">Key Vault</div><div class="step-subtitle">Almacenamiento seguro de secrets, API keys y connection strings</div></div>
+        <div class="step-badge badge-cost">~$3/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Key Vault" → Name: <strong>regwatch-kv-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Tier: Standard → Review + Create → Create</div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Secrets → "+ Generate/Import" → cargar cada secret:</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>AZURE-OPENAI-API-KEY → de regwatch-openai-dev → Keys</div>
+            <div class="portal-item"><div class="portal-item-num">5</div>AZURE-OPENAI-ENDPOINT → https://regwatch-openai-dev.openai.azure.com/</div>
+            <div class="portal-item"><div class="portal-item-num">6</div>AZURE-SEARCH-API-KEY, POSTGRES-CONNECTION-STRING, REDIS-CONNECTION-STRING, SERVICEBUS-CONNECTION-STRING</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Secrets a cargar</div><div class="info-value">6 secrets del stack</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$3/mes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 11 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num"><span>PASO</span><strong>11</strong></div>
+        <div><div class="step-title">Application Insights</div><div class="step-subtitle">Monitoreo, logs, performance y observabilidad</div></div>
+        <div class="step-badge badge-cost">~$5/mes</div>
+      </div>
+      <div class="step-body">
+        <div class="portal-steps">
+          <div class="portal-label">Portal Azure</div>
+          <div class="portal-list">
+            <div class="portal-item"><div class="portal-item-num">1</div>+ Create a resource → "Application Insights" → Create</div>
+            <div class="portal-item"><div class="portal-item-num">2</div>Name: <strong>regwatch-insights-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">3</div>Resource Mode: Workspace-based</div>
+            <div class="portal-item"><div class="portal-item-num">4</div>Log Analytics Workspace → Create new → <strong>regwatch-logs-dev</strong></div>
+            <div class="portal-item"><div class="portal-item-num">5</div>Review + Create → Create</div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="info-row"><div class="info-label">Primeros 5GB</div><div class="info-value green">Gratis por mes</div></div>
+          <div class="info-row"><div class="info-label">Costo</div><div class="info-value">~$5/mes</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- COST TABLE -->
+<div class="section fade-in">
+  <div class="section-title">Presupuesto</div>
+  <div class="section-h2">Resumen de costos</div>
+
+  <div class="cost-section">
+    <table class="cost-table">
+      <thead>
+        <tr>
+          <th>Paso</th>
+          <th>Recurso</th>
+          <th>Nombre en Azure</th>
+          <th>Tier</th>
+          <th>Costo/mes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>0</td><td>Azure CLI Config</td><td>—</td><td>—</td><td class="cost-free">$0</td></tr>
+        <tr><td>1</td><td>Resource Group</td><td>rg-regwatch-dev</td><td>—</td><td class="cost-free">$0</td></tr>
+        <tr><td>2</td><td>Budget Alert</td><td>regwatch-dev-budget</td><td>—</td><td class="cost-free">$0</td></tr>
+        <tr><td>3</td><td>Azure OpenAI</td><td>regwatch-openai-dev</td><td>Standard S0</td><td class="cost-var">Pay-per-use</td></tr>
+        <tr><td>4</td><td>Azure AI Search</td><td>regwatch-search-dev</td><td>Free F0</td><td class="cost-free">$0</td></tr>
+        <tr><td>5</td><td>Container Registry</td><td>regwatchdevacr</td><td>Basic</td><td class="cost-paid">~$5</td></tr>
+        <tr><td>6</td><td>PostgreSQL</td><td>regwatch-postgres-dev</td><td>Burstable B1ms</td><td class="cost-paid">~$15</td></tr>
+        <tr><td>7</td><td>Redis Cache</td><td>regwatch-redis-dev</td><td>Basic C0</td><td class="cost-paid">~$16</td></tr>
+        <tr><td>8</td><td>Service Bus</td><td>regwatch-servicebus-dev</td><td>Standard</td><td class="cost-paid">~$10</td></tr>
+        <tr><td>9</td><td>Container Apps</td><td>cae-regwatch-dev</td><td>Scale-to-zero</td><td class="cost-paid">~$5</td></tr>
+        <tr><td>10</td><td>Key Vault</td><td>regwatch-kv-dev</td><td>Standard</td><td class="cost-paid">~$3</td></tr>
+        <tr><td>11</td><td>Application Insights</td><td>regwatch-insights-dev</td><td>Workspace</td><td class="cost-paid">~$5</td></tr>
+        <tr class="total"><td colspan="4">TOTAL (sin Azure OpenAI)</td><td class="cost-free">~$59/mes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CREDIT VISUAL -->
+  <div class="credit-visual">
+    <div class="credit-title">💰 Distribución del crédito de $1.000</div>
+    <div class="credit-bar-wrap">
+      <div class="credit-bar-label"><span>$0</span><span>$1.000</span></div>
+      <div class="credit-bar-bg">
+        <div class="credit-segment seg-demo">Demo</div>
+        <div class="credit-segment seg-mvp">MVP 3 meses</div>
+        <div class="credit-segment seg-buff">Buffer</div>
+        <div class="credit-segment seg-spar">Spare</div>
+      </div>
+    </div>
+    <div class="credit-legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#3B82F6"></div>
+        <div><div class="legend-text">Demo hackathon</div><div class="legend-amount">~$60</div></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#38BDF8"></div>
+        <div><div class="legend-text">MVP 3 meses</div><div class="legend-amount">~$555</div></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#22C55E"></div>
+        <div><div class="legend-text">Buffer / imprevistos</div><div class="legend-amount">~$290</div></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#1E3A5F"></div>
+        <div><div class="legend-text">Spare</div><div class="legend-amount">~$95</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VERIFICATION -->
+<div class="section fade-in">
+  <div class="section-title">Verificación</div>
+  <div class="section-h2">Checklist final</div>
+
+  <div class="verify-section">
+    <div class="verify-title">✅ Comando de verificación</div>
+    <div class="verify-subtitle">Ejecutar en el CLI una vez creados todos los recursos:</div>
+    <div class="code-block"><span class="cmd">az</span> resource list \
+  <span class="flag">--resource-group</span> rg-regwatch-dev \
+  <span class="flag">--output</span> table
+
+<span class="comment"># Resultado esperado — 11 recursos:</span>
+Name                       Type
+-------------------------  ------------------------------------------
+regwatch-openai-dev        Microsoft.CognitiveServices/accounts
+regwatch-search-dev        Microsoft.Search/searchServices
+regwatchdevacr             Microsoft.ContainerRegistry/registries
+regwatch-postgres-dev      Microsoft.DBforPostgreSQL/flexibleServers
+regwatch-redis-dev         Microsoft.Cache/Redis
+regwatch-servicebus-dev    Microsoft.ServiceBus/namespaces
+regwatch-kv-dev            Microsoft.KeyVault/vaults
+cae-regwatch-dev           Microsoft.App/managedEnvironments
+regwatch-api-dev           Microsoft.App/containerApps
+regwatch-web-dev           Microsoft.App/containerApps
+regwatch-insights-dev      Microsoft.Insights/components</div>
+  </div>
+
+  <div class="checklist">
+    <div class="check-item"><div class="check-icon">☐</div>az login exitoso y suscripción $1000 seleccionada</div>
+    <div class="check-item"><div class="check-icon">☐</div>Resource Group rg-regwatch-dev creado en East US</div>
+    <div class="check-item"><div class="check-icon">☐</div>Budget Alert configurado al 80% ($160) con email</div>
+    <div class="check-item"><div class="check-icon">☐</div>Azure OpenAI con gpt-4o-mini y text-embedding-3-large deployados</div>
+    <div class="check-item"><div class="check-icon">☐</div>AI Search en tier Free F0 con índice regulatory-changes creado</div>
+    <div class="check-item"><div class="check-icon">☐</div>Container Registry con Admin user habilitado y credenciales guardadas</div>
+    <div class="check-item"><div class="check-icon">☐</div>PostgreSQL con password guardada y IP local agregada al firewall</div>
+    <div class="check-item"><div class="check-icon">☐</div>Redis Cache Basic C0 creado</div>
+    <div class="check-item"><div class="check-icon">☐</div>Service Bus con 3 queues: regulatory-changes, alert-notifications, ingestion-jobs</div>
+    <div class="check-item"><div class="check-icon">☐</div>Container Apps Environment cae-regwatch-dev + apps api y web creadas</div>
+    <div class="check-item"><div class="check-icon">☐</div>Key Vault con los 6 secrets cargados</div>
+    <div class="check-item"><div class="check-icon">☐</div>Application Insights con Log Analytics Workspace creado</div>
+    <div class="check-item"><div class="check-icon">☐</div>az resource list muestra los 11 recursos en rg-regwatch-dev</div>
+  </div>
+
+  <div style="margin-top:32px;padding:20px 24px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.2);border-radius:12px;">
+    <p style="font-size:15px;color:#86EFAC;font-weight:600;margin-bottom:6px;">🚀 Una vez verificado el checklist completo:</p>
+    <p style="font-size:14px;color:var(--text2);">Abrís una nueva sesión en Claude Code o Cursor y ejecutás la <strong style="color:var(--text)">Fase 0</strong> del master build prompt para validar la arquitectura antes de escribir código.</p>
+  </div>
+</div>
+
+<footer>
+  <p style="margin-bottom:6px"><strong style="color:var(--text)">RegWatch AI</strong> — Azure Infrastructure Setup Guide</p>
+  <p>BoyScout AI · Emanuel Jiménez · East US · 2026</p>
+</footer>
+
+<script>
+  // Scroll animation
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

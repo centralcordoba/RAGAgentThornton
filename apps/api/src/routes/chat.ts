@@ -5,6 +5,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import Redis from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import { ChatRequestSchema, Errors } from '@regwatch/shared';
 import type { RegulatoryRAG, ComplianceAgent } from '@regwatch/ai-core';
@@ -13,13 +14,88 @@ import { createServiceLogger } from '../config/logger.js';
 
 const logger = createServiceLogger('route:chat');
 
-/** In-memory conversation store. Production: use Redis or PostgreSQL. */
-const conversationStore = new Map<string, ConversationEntry[]>();
+// ---------------------------------------------------------------------------
+// Conversation store — Redis-backed with in-memory fallback
+// ---------------------------------------------------------------------------
 
 interface ConversationEntry {
   readonly role: 'user' | 'assistant';
   readonly content: string;
-  readonly timestamp: Date;
+  readonly timestamp: string;
+}
+
+const CONVERSATION_TTL = 86_400; // 24 hours
+const CONVERSATION_MAX_ENTRIES = 100;
+
+interface ConversationStore {
+  get(conversationId: string): Promise<ConversationEntry[]>;
+  set(conversationId: string, entries: ConversationEntry[]): Promise<void>;
+}
+
+function createRedisConversationStore(redis: Redis): ConversationStore {
+  return {
+    async get(conversationId: string): Promise<ConversationEntry[]> {
+      const key = `conv:${conversationId}`;
+      const raw = await redis.get(key);
+      if (!raw) return [];
+      return JSON.parse(raw) as ConversationEntry[];
+    },
+    async set(conversationId: string, entries: ConversationEntry[]): Promise<void> {
+      const key = `conv:${conversationId}`;
+      const trimmed = entries.length > CONVERSATION_MAX_ENTRIES
+        ? entries.slice(-CONVERSATION_MAX_ENTRIES)
+        : entries;
+      await redis.set(key, JSON.stringify(trimmed), 'EX', CONVERSATION_TTL);
+    },
+  };
+}
+
+function createInMemoryConversationStore(): ConversationStore {
+  const store = new Map<string, ConversationEntry[]>();
+  return {
+    async get(conversationId: string): Promise<ConversationEntry[]> {
+      return store.get(conversationId) ?? [];
+    },
+    async set(conversationId: string, entries: ConversationEntry[]): Promise<void> {
+      const trimmed = entries.length > CONVERSATION_MAX_ENTRIES
+        ? entries.slice(-CONVERSATION_MAX_ENTRIES)
+        : entries;
+      store.set(conversationId, trimmed);
+    },
+  };
+}
+
+let conversationStore: ConversationStore | null = null;
+
+function getConversationStore(): ConversationStore {
+  if (conversationStore) return conversationStore;
+
+  const redisUrl = process.env['REDIS_URL'];
+  if (redisUrl) {
+    const redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+      enableOfflineQueue: false,
+    });
+    redis.connect().catch(() => {
+      logger.warn({
+        operation: 'chat:conversation_store',
+        result: 'redis_connect_failed',
+        fallback: 'memory',
+      });
+    });
+    conversationStore = createRedisConversationStore(redis);
+    logger.info({ operation: 'chat:conversation_store', backend: 'redis' });
+  } else {
+    conversationStore = createInMemoryConversationStore();
+    logger.warn({
+      operation: 'chat:conversation_store',
+      backend: 'memory',
+      warning: 'Conversation history will not persist across restarts or replicas',
+    });
+  }
+
+  return conversationStore;
 }
 
 export interface ChatRouteDeps {
@@ -49,7 +125,8 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
 
     // Get or create conversation
     const convId = conversationId ?? randomUUID();
-    const history = conversationStore.get(convId) ?? [];
+    const store = getConversationStore();
+    const history = await store.get(convId);
 
     // Decide: use agent for complex queries, RAG for simple ones
     const useAgent = shouldUseAgent(message);
@@ -119,19 +196,14 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
           res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
         }
 
-        // Update conversation history
-        history.push({ role: 'user', content: message, timestamp: new Date() });
+        // Update conversation history in Redis
+        history.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
         history.push({
           role: 'assistant',
           content: useAgent ? (response as { answer: string }).answer : (response as { analysis: { answer: string } }).analysis.answer,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         });
-        conversationStore.set(convId, history);
-
-        // Trim old conversations (keep max 50 turns)
-        if (history.length > 100) {
-          conversationStore.set(convId, history.slice(-100));
-        }
+        await store.set(convId, history);
 
         res.write(`event: done\ndata: ${JSON.stringify({ duration: Date.now() - startTime })}\n\n`);
         res.end();
@@ -184,11 +256,11 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
         responseBody = await deps.ragEngine.query(ragInput);
       }
 
-      // Update conversation history
-      history.push({ role: 'user', content: message, timestamp: new Date() });
+      // Update conversation history in Redis
+      history.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
       const answer = 'analysis' in responseBody ? responseBody.analysis.answer : '';
-      history.push({ role: 'assistant', content: answer, timestamp: new Date() });
-      conversationStore.set(convId, history);
+      history.push({ role: 'assistant', content: answer, timestamp: new Date().toISOString() });
+      await store.set(convId, history);
 
       logger.info({
         operation: 'chat:query_complete',

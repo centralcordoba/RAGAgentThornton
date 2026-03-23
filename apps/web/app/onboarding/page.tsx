@@ -31,27 +31,49 @@ export default function OnboardingPage() {
   const [countries, setCountries] = useState<string[]>([]);
   const [result, setResult] = useState<ComplianceMapResult | null>(null);
 
-  // Step 3 → Step 4: simulate API call
+  // Step 3 → Step 4: call real API to create client and get ComplianceMap
   const startAnalysis = useCallback(async () => {
     setCurrentStep(2); // Show analyzing animation
 
-    // In production: call api.clients.create() then wait for ComplianceMap
-    // const client = await api.clients.create({ ...basicInfo, countries });
-    // const complianceMap = await pollForComplianceMap(client.id);
+    const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
+    const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 12_000));
+    try {
+      // Create client via API
+      const createRes = await fetch(`${API_BASE}/api/clients`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...basicInfo, countries }),
+      });
 
-    // Set mock result
-    setResult(generateMockResult(basicInfo, countries));
+      if (createRes.ok) {
+        const client = await createRes.json();
+
+        // Fetch dashboard data as ComplianceMap result
+        const dashRes = await fetch(`${API_BASE}/api/clients/${client.id}/dashboard`, { headers });
+        const dashboard = dashRes.ok ? await dashRes.json() : null;
+
+        setResult(buildResultFromDashboard(basicInfo, countries, dashboard));
+      } else {
+        // API call failed — build result from local data
+        setResult(buildLocalResult(basicInfo, countries));
+      }
+    } catch {
+      // Network error — build result from local data
+      setResult(buildLocalResult(basicInfo, countries));
+    }
+
     setCurrentStep(3); // Show result
   }, [basicInfo, countries]);
 
-  // Save client
+  // Save client (already created in startAnalysis)
   const handleSave = useCallback(async () => {
     setIsSaving(true);
-    // In production: api.clients.create() if not already created
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     setIsSaving(false);
     router.push('/clients');
   }, [router]);
@@ -110,80 +132,53 @@ export default function OnboardingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Mock result generator
+// Result builders — from API data or local fallback
 // ---------------------------------------------------------------------------
 
-function generateMockResult(info: BasicInfoData, countries: string[]): ComplianceMapResult {
-  const countryResults = countries.map((code) => {
-    const oblCount = 5 + Math.floor(Math.random() * 6);
-    const areas = ['fiscal', 'labor', 'corporate'];
-    const regulators: Record<string, string> = {
-      US: 'IRS / SEC', AR: 'AFIP / CNV', BR: 'Receita Federal / CVM',
-      MX: 'SAT / CNBV', ES: 'AEAT / CNMV', CL: 'SII / CMF',
-    };
+function buildResultFromDashboard(
+  info: BasicInfoData,
+  countries: string[],
+  dashboard: Record<string, unknown> | null,
+): ComplianceMapResult {
+  const totalObligations = (dashboard?.['totalObligations'] as number) ?? 0;
+  const obligationsByStatus = (dashboard?.['obligationsByStatus'] as Record<string, number>) ?? {};
+  const overdueCount = obligationsByStatus['OVERDUE'] ?? 0;
+  const pendingCount = (obligationsByStatus['PENDING'] ?? 0) + (obligationsByStatus['IN_PROGRESS'] ?? 0);
 
-    const obligations = Array.from({ length: oblCount }, (_, i) => {
-      const area = areas[i % areas.length]!;
-      const urgencyRoll = Math.random();
-      const urgency = urgencyRoll < 0.2 ? 'CRITICAL' : urgencyRoll < 0.5 ? 'IMPORTANT' : 'NORMAL';
-      const daysAhead = urgency === 'CRITICAL' ? 10 + i * 3 : urgency === 'IMPORTANT' ? 40 + i * 10 : 100 + i * 15;
-      const dueDate = new Date(Date.now() + daysAhead * 86_400_000).toISOString().split('T')[0]!;
+  const deadlines = ((dashboard?.['upcomingDeadlines'] as Record<string, unknown>[]) ?? []).map((d) => ({
+    obligationTitle: (d['title'] as string) ?? '',
+    dueDate: ((d['deadline'] as string) ?? '').split('T')[0] ?? '',
+    daysUntilDue: Math.ceil((new Date((d['deadline'] as string) ?? '').getTime() - Date.now()) / 86_400_000),
+    urgency: 'CRITICAL',
+  }));
 
-      return {
-        id: `obl-${code}-${i}`,
-        title: `${area === 'fiscal' ? 'Declaración' : area === 'labor' ? 'Registro' : 'Informe'} ${code}-${i + 1}`,
-        area,
-        regulator: regulators[code] ?? 'Regulador local',
-        dueDate,
-        urgency,
-        penaltyInfo: urgency === 'CRITICAL' ? 'Multa por incumplimiento' : 'Recargo por presentación tardía',
-      };
-    });
-
-    const criticalDeadlines = obligations
-      .filter((o) => o.urgency === 'CRITICAL')
-      .map((o) => ({
-        obligationTitle: o.title,
-        dueDate: o.dueDate,
-        daysUntilDue: Math.ceil((new Date(o.dueDate).getTime() - Date.now()) / 86_400_000),
-        urgency: o.urgency,
-      }));
-
-    return {
-      country: code,
-      riskScore: 20 + Math.floor(Math.random() * 60),
-      obligations,
-      criticalDeadlines,
-    };
-  });
-
-  const totalObligations = countryResults.reduce((sum, c) => sum + c.obligations.length, 0);
-  const criticalCount = countryResults.reduce((sum, c) => sum + c.criticalDeadlines.length, 0);
-  const importantCount = countryResults.reduce(
-    (sum, c) => sum + c.obligations.filter((o) => o.urgency === 'IMPORTANT').length, 0,
-  );
+  const countryResults = countries.map((code) => ({
+    country: code,
+    riskScore: dashboard ? 100 - ((dashboard['complianceScore'] as number) ?? 50) : 50,
+    obligations: [],
+    criticalDeadlines: deadlines.filter(() => true),
+  }));
 
   return {
     countries: countryResults,
     executiveSummary: {
-      es: `${info.name} opera como ${info.companyType} en ${countries.length} jurisdicciones. Se identificaron ${totalObligations} obligaciones regulatorias, de las cuales ${criticalCount} son críticas (vencen en menos de 30 días) y ${importantCount} son importantes (vencen en menos de 90 días). Se recomienda priorizar las obligaciones fiscales en las jurisdicciones con mayor riesgo y establecer un calendario unificado de cumplimiento.`,
-      en: `${info.name} operates as ${info.companyType} across ${countries.length} jurisdictions. ${totalObligations} regulatory obligations were identified, of which ${criticalCount} are critical (due within 30 days) and ${importantCount} are important (due within 90 days). It is recommended to prioritize fiscal obligations in higher-risk jurisdictions and establish a unified compliance calendar.`,
+      es: `${info.name} opera como ${info.companyType} en ${countries.length} jurisdicciones. Se identificaron ${totalObligations} obligaciones regulatorias, de las cuales ${overdueCount} están vencidas y ${pendingCount} están pendientes.`,
+      en: `${info.name} operates as ${info.companyType} across ${countries.length} jurisdictions. ${totalObligations} regulatory obligations were identified, of which ${overdueCount} are overdue and ${pendingCount} are pending.`,
     },
     immediateActions: [
-      `URGENTE: ${criticalCount} obligaciones vencen en menos de 30 días. Revisar y asignar responsables inmediatamente.`,
-      ...countryResults.flatMap((c) =>
-        c.criticalDeadlines.slice(0, 2).map((d) =>
-          `→ ${d.obligationTitle} (${c.country}): vence ${d.dueDate} (${d.daysUntilDue} días)`,
-        ),
-      ),
-      `PLANIFICAR: ${importantCount} obligaciones vencen entre 30 y 90 días. Iniciar preparación.`,
-      `COORDINAR: Se detectaron áreas regulatorias comunes en múltiples países. Consolidar gestión.`,
+      ...(overdueCount > 0 ? [`URGENTE: ${overdueCount} obligaciones vencidas. Revisar inmediatamente.`] : []),
+      ...(pendingCount > 0 ? [`PLANIFICAR: ${pendingCount} obligaciones pendientes. Asignar responsables.`] : []),
+      `COORDINAR: Establecer calendario unificado de cumplimiento para ${countries.join(', ')}.`,
     ],
     stats: {
       totalObligations,
-      criticalCount,
-      importantCount,
+      criticalCount: overdueCount,
+      importantCount: pendingCount,
       countriesCount: countries.length,
     },
   };
+}
+
+function buildLocalResult(info: BasicInfoData, countries: string[]): ComplianceMapResult {
+  return buildResultFromDashboard(info, countries, null);
 }

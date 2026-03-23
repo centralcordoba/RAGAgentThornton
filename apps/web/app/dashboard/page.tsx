@@ -1,6 +1,6 @@
 // ============================================================================
 // FILE: apps/web/app/dashboard/page.tsx
-// Global Dashboard — metrics, risk map, and recent changes feed.
+// Global Dashboard — fetches real data from API.
 // ============================================================================
 
 import { GlobalMetrics } from '@/components/dashboard/GlobalMetrics';
@@ -12,15 +12,128 @@ import { RecentChanges } from '@/components/dashboard/RecentChanges';
 import type { ChangeItem } from '@/components/dashboard/RecentChanges';
 
 // ---------------------------------------------------------------------------
-// Server Component — fetches initial data
+// API helpers (server component — fetches directly)
+// ---------------------------------------------------------------------------
+
+const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
+const DEV_TOKEN = process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+
+function authHeaders(): Record<string, string> {
+  return DEV_TOKEN ? { Authorization: `Bearer ${DEV_TOKEN}` } : {};
+}
+
+async function fetchMetrics(): Promise<GlobalMetricsData> {
+  try {
+    // Fetch counts from multiple endpoints
+    const [clientsRes, alertsRes, regulationsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/clients?pageSize=1`, { cache: 'no-store', headers: authHeaders() }).catch(() => null),
+      fetch(`${API_BASE}/api/alerts?pageSize=1`, { cache: 'no-store', headers: authHeaders() }).catch(() => null),
+      fetch(`${API_BASE}/api/regulations?pageSize=1`, { cache: 'no-store', headers: authHeaders() }).catch(() => null),
+    ]);
+
+    const clients = clientsRes?.ok ? await clientsRes.json() : { total: 0 };
+    const alerts = alertsRes?.ok ? await alertsRes.json() : { total: 0, data: [] };
+    const regulations = regulationsRes?.ok ? await regulationsRes.json() : { total: 0 };
+
+    const alertData = (alerts.data ?? []) as Record<string, unknown>[];
+    const highAlerts = alertData.filter((a) => a['impactLevel'] === 'HIGH').length;
+    const medAlerts = alertData.filter((a) => a['impactLevel'] === 'MEDIUM').length;
+
+    return {
+      activeClients: clients.total ?? 0,
+      alertsOpen: {
+        total: alerts.total ?? 0,
+        high: highAlerts,
+        medium: medAlerts,
+        low: (alerts.total ?? 0) - highAlerts - medAlerts,
+      },
+      regulatoryChanges7d: regulations.total ?? 0,
+      deadlines30d: 0,
+      alertsTrend: 0,
+      changesTrend: 0,
+    };
+  } catch {
+    return {
+      activeClients: 0,
+      alertsOpen: { total: 0, high: 0, medium: 0, low: 0 },
+      regulatoryChanges7d: 0,
+      deadlines30d: 0,
+      alertsTrend: 0,
+      changesTrend: 0,
+    };
+  }
+}
+
+async function fetchCountryRisk(): Promise<CountryRiskData[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/regulations?pageSize=50`, { cache: 'no-store', headers: authHeaders() });
+    if (!res.ok) return [];
+
+    const body = await res.json();
+    const regulations = (body.data ?? []) as Record<string, unknown>[];
+
+    // Group by country
+    const byCountry = new Map<string, Record<string, unknown>[]>();
+    for (const reg of regulations) {
+      const country = (reg['country'] as string) ?? 'UNKNOWN';
+      if (!byCountry.has(country)) byCountry.set(country, []);
+      byCountry.get(country)!.push(reg);
+    }
+
+    return Array.from(byCountry.entries()).map(([code, regs]) => {
+      const highCount = regs.filter((r) => r['impactLevel'] === 'HIGH').length;
+      return {
+        code,
+        riskScore: Math.min(100, highCount * 25 + regs.length * 5),
+        activeClients: 0,
+        openAlerts: 0,
+        nextDeadline: '',
+        recentChanges: regs.slice(0, 3).map((r) => ({
+          id: r['id'] as string,
+          title: r['title'] as string,
+          impactLevel: r['impactLevel'] as string,
+          publishedDate: ((r['publishedDate'] as string) ?? '').split('T')[0] ?? '',
+        })),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function fetchRecentChanges(): Promise<ChangeItem[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/regulations?pageSize=10`, { cache: 'no-store', headers: authHeaders() });
+    if (!res.ok) return [];
+
+    const body = await res.json();
+    return ((body.data ?? []) as Record<string, unknown>[]).map((r) => ({
+      id: r['id'] as string,
+      title: r['title'] as string,
+      country: r['country'] as string,
+      impactLevel: r['impactLevel'] as string,
+      source: (r['sourceUrl'] as string)?.includes('sec.gov') ? 'SEC_EDGAR'
+        : (r['sourceUrl'] as string)?.includes('eur-lex') ? 'EUR_LEX'
+        : (r['sourceUrl'] as string)?.includes('boe.es') ? 'BOE_SPAIN'
+        : 'UNKNOWN',
+      publishedDate: (r['publishedDate'] as string) ?? '',
+      affectedAreas: (r['affectedAreas'] as string[]) ?? [],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Server Component
 // ---------------------------------------------------------------------------
 
 export default async function DashboardPage() {
-  // In production: fetch from API with RSC server fetch
-  // const metricsRes = await fetch(`${API_URL}/api/dashboard/metrics`, { cache: 'no-store' });
-  const metrics = getMockMetrics();
-  const countries = getMockCountryRisk();
-  const recentChanges = getMockRecentChanges();
+  const [metrics, countries, recentChanges] = await Promise.all([
+    fetchMetrics(),
+    fetchCountryRisk(),
+    fetchRecentChanges(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -49,152 +162,4 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Mock data — replaced by API calls in production
-// ---------------------------------------------------------------------------
-
-function getMockMetrics(): GlobalMetricsData {
-  return {
-    activeClients: 24,
-    alertsOpen: { total: 18, high: 3, medium: 8, low: 7 },
-    regulatoryChanges7d: 42,
-    deadlines30d: 15,
-    alertsTrend: 12,
-    changesTrend: -5,
-  };
-}
-
-function getMockCountryRisk(): CountryRiskData[] {
-  return [
-    {
-      code: 'US',
-      riskScore: 45,
-      activeClients: 8,
-      openAlerts: 5,
-      nextDeadline: '2026-04-15',
-      recentChanges: [
-        { id: 'rc-1', title: 'SEC Rule 10b-5 Amendment — Enhanced Derivatives Disclosure', impactLevel: 'HIGH', publishedDate: '2026-03-12' },
-        { id: 'rc-2', title: 'Form 941 — Updated Quarterly Employment Tax', impactLevel: 'LOW', publishedDate: '2026-03-10' },
-      ],
-    },
-    {
-      code: 'AR',
-      riskScore: 72,
-      activeClients: 5,
-      openAlerts: 4,
-      nextDeadline: '2026-04-13',
-      recentChanges: [
-        { id: 'rc-3', title: 'AFIP RG 5616 — Nuevo régimen de retenciones IVA', impactLevel: 'HIGH', publishedDate: '2026-03-14' },
-        { id: 'rc-4', title: 'CNV Resolución 1002 — Modificación régimen informativo', impactLevel: 'MEDIUM', publishedDate: '2026-03-11' },
-      ],
-    },
-    {
-      code: 'BR',
-      riskScore: 58,
-      activeClients: 6,
-      openAlerts: 3,
-      nextDeadline: '2026-04-07',
-      recentChanges: [
-        { id: 'rc-5', title: 'Receita Federal — Alteração DCTF simplificada', impactLevel: 'MEDIUM', publishedDate: '2026-03-13' },
-      ],
-    },
-    {
-      code: 'MX',
-      riskScore: 35,
-      activeClients: 4,
-      openAlerts: 2,
-      nextDeadline: '2026-04-17',
-      recentChanges: [
-        { id: 'rc-6', title: 'SAT — Actualización factura electrónica CFDI 4.0', impactLevel: 'MEDIUM', publishedDate: '2026-03-09' },
-      ],
-    },
-    {
-      code: 'ES',
-      riskScore: 28,
-      activeClients: 3,
-      openAlerts: 1,
-      nextDeadline: '2026-04-20',
-      recentChanges: [
-        { id: 'rc-7', title: 'BOE — Corrección modelo 303 IVA trimestral', impactLevel: 'LOW', publishedDate: '2026-03-08' },
-      ],
-    },
-    {
-      code: 'CL',
-      riskScore: 22,
-      activeClients: 2,
-      openAlerts: 0,
-      nextDeadline: '2026-05-01',
-      recentChanges: [],
-    },
-  ];
-}
-
-function getMockRecentChanges(): ChangeItem[] {
-  return [
-    {
-      id: 'fc-1',
-      title: 'AFIP RG 5616 — Nuevo régimen de retenciones IVA para operaciones digitales',
-      country: 'AR',
-      impactLevel: 'HIGH',
-      source: 'AFIP',
-      publishedDate: '2026-03-14T14:30:00Z',
-      affectedAreas: ['fiscal', 'digital'],
-    },
-    {
-      id: 'fc-2',
-      title: 'SEC Rule 10b-5 Amendment — Enhanced Derivatives Disclosure Requirements',
-      country: 'US',
-      impactLevel: 'HIGH',
-      source: 'SEC_EDGAR',
-      publishedDate: '2026-03-12T18:00:00Z',
-      affectedAreas: ['securities', 'derivatives'],
-    },
-    {
-      id: 'fc-3',
-      title: 'Receita Federal — Alteração na DCTF para empresas do Simples Nacional',
-      country: 'BR',
-      impactLevel: 'MEDIUM',
-      source: 'RECEITA_FEDERAL',
-      publishedDate: '2026-03-13T12:00:00Z',
-      affectedAreas: ['fiscal'],
-    },
-    {
-      id: 'fc-4',
-      title: 'CNV Resolución 1002 — Modificación del régimen informativo para fondos comunes',
-      country: 'AR',
-      impactLevel: 'MEDIUM',
-      source: 'CNV',
-      publishedDate: '2026-03-11T10:00:00Z',
-      affectedAreas: ['securities', 'funds'],
-    },
-    {
-      id: 'fc-5',
-      title: 'SAT — Actualización de la factura electrónica CFDI 4.0 campo receptor',
-      country: 'MX',
-      impactLevel: 'MEDIUM',
-      source: 'DOF_MEXICO',
-      publishedDate: '2026-03-09T08:00:00Z',
-      affectedAreas: ['fiscal', 'digital'],
-    },
-    {
-      id: 'fc-6',
-      title: 'BOE — Corrección de erratas en el modelo 303 de IVA trimestral',
-      country: 'ES',
-      impactLevel: 'LOW',
-      source: 'BOE_SPAIN',
-      publishedDate: '2026-03-08T09:00:00Z',
-      affectedAreas: ['fiscal'],
-    },
-    {
-      id: 'fc-7',
-      title: 'Form 941 — Updated Instructions for Quarterly Employment Tax Return',
-      country: 'US',
-      impactLevel: 'LOW',
-      source: 'SEC_EDGAR',
-      publishedDate: '2026-03-10T15:00:00Z',
-      affectedAreas: ['labor', 'fiscal'],
-    },
-  ];
 }

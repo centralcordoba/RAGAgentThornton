@@ -63,7 +63,7 @@ export function SourcesPanel() {
 
   const fetchSources = useCallback(async () => {
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'];
       const res = await fetch(`${API_BASE}/api/sources`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -72,7 +72,7 @@ export function SourcesPanel() {
         setSources(data.data ?? []);
       }
     } catch {
-      // Fallback: use mock data if API is not available
+      // API not available — sources list will be empty
     } finally {
       setLoading(false);
     }
@@ -85,7 +85,7 @@ export function SourcesPanel() {
   const handleToggle = async (source: Source) => {
     setTogglingId(source.id);
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'];
       const res = await fetch(`${API_BASE}/api/sources/${source.id}`, {
         method: 'PATCH',
         headers: {

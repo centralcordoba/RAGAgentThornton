@@ -1,0 +1,328 @@
+// ============================================================================
+// RegWatch AI — Prisma Schema
+//
+// Provider: PostgreSQL (Azure Database for PostgreSQL Flexible Server)
+// Tenant isolation: every row-level model includes tenantId
+// Idempotency: regulatory_changes uses unique(sourceId, externalDocumentId, version)
+// Audit trail: audit_log tracks all domain events
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & Tenants
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  email     String
+  name      String
+  role      UserRole
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  alertsReviewed Alert[]     @relation("ReviewedBy")
+  auditEntries   AuditLog[]  @relation("PerformedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  PROFESSIONAL
+  CLIENT_VIEWER
+}
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+model Client {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  name         String
+  countries    String[]
+  companyType  String   @map("company_type")
+  industries   String[]
+  contactEmail String   @map("contact_email")
+  isActive     Boolean  @default(true) @map("is_active")
+  onboardedAt  DateTime @default(now()) @map("onboarded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  obligations Obligation[]
+  alerts      Alert[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("clients")
+}
+
+// ---------------------------------------------------------------------------
+// Regulatory Sources
+// ---------------------------------------------------------------------------
+
+model RegulatorySource {
+  id                   String              @id @default(uuid()) @db.Uuid
+  name                 String
+  country              String              @db.VarChar(2)
+  jurisdiction         String
+  url                  String
+  type                 RegulatorySourceType
+  connectorType        SourceConnectorType  @default(API) @map("connector_type")
+  lastChecked          DateTime?            @map("last_checked")
+  isActive             Boolean              @default(true) @map("is_active")
+  checkIntervalMinutes Int                  @default(60) @map("check_interval_minutes")
+  baseUrl              String               @default("") @map("base_url")
+  headers              Json                 @default("{}") @db.JsonB
+  regulatoryArea       String               @default("") @map("regulatory_area")
+  frequency            SourceFrequency      @default(hourly)
+  status               SourceStatus         @default(OK)
+  lastError            String?              @map("last_error")
+  docsIndexed          Int                  @default(0) @map("docs_indexed")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  changes       RegulatoryChange[]
+  ingestionRuns IngestionRun[]
+
+  @@unique([country, name])
+  @@index([isActive])
+  @@map("regulatory_sources")
+}
+
+enum RegulatorySourceType {
+  LEGISLATIVE
+  REGULATORY
+  GUIDANCE
+  ENFORCEMENT
+}
+
+enum SourceConnectorType {
+  API
+  RSS
+  SCRAPING
+}
+
+enum SourceFrequency {
+  every_10min
+  hourly
+  daily
+}
+
+enum SourceStatus {
+  OK
+  WARNING
+  ERROR
+}
+
+// ---------------------------------------------------------------------------
+// Regulatory Changes
+// ---------------------------------------------------------------------------
+
+model RegulatoryChange {
+  id                 String      @id @default(uuid()) @db.Uuid
+  sourceId           String      @map("source_id") @db.Uuid
+  externalDocumentId String      @map("external_document_id")
+  title              String
+  summary            String      @db.Text
+  rawContent         String      @default("") @map("raw_content") @db.Text
+  effectiveDate      DateTime    @map("effective_date") @db.Date
+  publishedDate      DateTime    @map("published_date") @db.Date
+  impactLevel        ImpactLevel @map("impact_level")
+  affectedAreas      String[]    @map("affected_areas")
+  affectedIndustries String[]    @map("affected_industries")
+  country            String      @db.VarChar(2)
+  jurisdiction       String
+  version            String      @default("1.0")
+  language           String      @default("en") @db.VarChar(5)
+  sourceUrl          String      @default("") @map("source_url")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  source      RegulatorySource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  obligations Obligation[]
+  alerts      Alert[]
+
+  // Idempotency: source + documentId + version must be unique
+  @@unique([sourceId, externalDocumentId, version], map: "uq_idempotency_key")
+  @@index([country])
+  @@index([impactLevel])
+  @@index([publishedDate])
+  @@index([sourceId])
+  @@map("regulatory_changes")
+}
+
+enum ImpactLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ---------------------------------------------------------------------------
+// Obligations
+// ---------------------------------------------------------------------------
+
+model Obligation {
+  id          String           @id @default(uuid()) @db.Uuid
+  clientId    String           @map("client_id") @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  changeId    String           @map("change_id") @db.Uuid
+  title       String
+  description String           @default("") @db.Text
+  deadline    DateTime         @db.Date
+  status      ObligationStatus @default(PENDING)
+  assignedTo  String           @default("") @map("assigned_to")
+  priority    ImpactLevel      @default(MEDIUM)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  client Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  change RegulatoryChange @relation(fields: [changeId], references: [id], onDelete: Restrict)
+  alerts Alert[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, status])
+  @@index([tenantId, deadline])
+  @@map("obligations")
+}
+
+enum ObligationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  WAIVED
+}
+
+// ---------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------
+
+model Alert {
+  id             String      @id @default(uuid()) @db.Uuid
+  clientId       String      @map("client_id") @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  changeId       String      @map("change_id") @db.Uuid
+  obligationId   String?     @map("obligation_id") @db.Uuid
+  message        String      @db.Text
+  channel        AlertChannel
+  status         AlertStatus @default(PENDING_REVIEW)
+  impactLevel    ImpactLevel @map("impact_level")
+  reviewedById   String?     @map("reviewed_by_id") @db.Uuid
+  reviewedAt     DateTime?   @map("reviewed_at")
+  sentAt         DateTime?   @map("sent_at")
+  acknowledgedAt DateTime?   @map("acknowledged_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  change     RegulatoryChange @relation(fields: [changeId], references: [id], onDelete: Restrict)
+  obligation Obligation?      @relation(fields: [obligationId], references: [id], onDelete: SetNull)
+  reviewedBy User?            @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@index([status, impactLevel])
+  @@map("alerts")
+}
+
+enum AlertChannel {
+  EMAIL
+  TEAMS
+  SSE
+}
+
+enum AlertStatus {
+  PENDING_REVIEW
+  APPROVED
+  SENT
+  ACKNOWLEDGED
+  DISMISSED
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  action        AuditAction
+  entityType    String      @map("entity_type")
+  entityId      String      @map("entity_id")
+  performedById String      @map("performed_by_id") @db.Uuid
+  details       Json        @default("{}") @db.JsonB
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  performedBy User @relation("PerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+enum AuditAction {
+  REGULATION_INGESTED
+  AI_ANALYSIS_GENERATED
+  ALERT_CREATED
+  ALERT_APPROVED
+  ALERT_SENT
+  ALERT_ACKNOWLEDGED
+  OBLIGATION_CREATED
+  OBLIGATION_UPDATED
+  CLIENT_ONBOARDED
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion Runs
+// ---------------------------------------------------------------------------
+
+model IngestionRun {
+  id               String          @id @default(uuid()) @db.Uuid
+  sourceId         String          @map("source_id") @db.Uuid
+  status           IngestionStatus @default(RUNNING)
+  documentsFound   Int             @default(0) @map("documents_found")
+  documentsNew     Int             @default(0) @map("documents_new")
+  documentsSkipped Int             @default(0) @map("documents_skipped")
+  errors           Json            @default("[]") @db.JsonB
+  startedAt        DateTime        @default(now()) @map("started_at")
+  completedAt      DateTime?       @map("completed_at")
+  durationMs       Int?            @map("duration_ms")
+
+  // Relations
+  source RegulatorySource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@index([startedAt])
+  @@index([status])
+  @@map("ingestion_runs")
+}
+
+enum IngestionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}

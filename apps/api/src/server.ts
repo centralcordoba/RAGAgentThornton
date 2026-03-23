@@ -8,7 +8,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
-import { AppError } from '@regwatch/shared';
 import { logger } from './config/logger.js';
 import {
   createHealthRouter,
@@ -30,6 +29,7 @@ import {
   createRequestIdMiddleware,
   createAuditLogMiddleware,
 } from './middleware/index.js';
+import type { HealthDeps } from './routes/health.js';
 
 // ---------------------------------------------------------------------------
 // App setup
@@ -40,8 +40,20 @@ const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
 // --- Global middleware ---
 app.use(helmet());
+
+// CORS: In staging/prod, CORS_ORIGIN is required — no '*' fallback.
+const nodeEnv = process.env['NODE_ENV'] ?? 'development';
+const corsOrigin = process.env['CORS_ORIGIN'];
+
+if ((nodeEnv === 'staging' || nodeEnv === 'production') && !corsOrigin) {
+  throw new Error(
+    'CORS_ORIGIN environment variable is required in staging/production. ' +
+    'Set it to the allowed origin (e.g., https://ca-web-regwatch-prod.azurecontainerapps.io).',
+  );
+}
+
 app.use(cors({
-  origin: process.env['CORS_ORIGIN'] ?? '*',
+  origin: corsOrigin ?? (nodeEnv === 'development' ? '*' : undefined),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
 }));
@@ -49,14 +61,113 @@ app.use(express.json({ limit: '5mb' }));
 app.use(createRequestIdMiddleware());
 app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));
 
+// ---------------------------------------------------------------------------
+// Service initialization
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize external service connections.
+ * Uses dynamic imports to avoid requiring built packages at startup.
+ * Returns null for services whose env vars are not configured (dev without docker).
+ */
+async function initServices(): Promise<{
+  prisma: unknown;
+  redisCache: unknown;
+  neo4j: unknown;
+}> {
+  let prisma: unknown = null;
+  let redisCache: unknown = null;
+  let neo4j: unknown = null;
+
+  // PostgreSQL (via Prisma)
+  if (process.env['DATABASE_URL']) {
+    try {
+      const { PrismaClient } = await import('@prisma/client');
+      prisma = new PrismaClient({
+        log: nodeEnv === 'development' ? ['warn', 'error'] : ['error'],
+      });
+      logger.info({ service: 'api', operation: 'init:prisma', result: 'configured' });
+    } catch (err) {
+      logger.warn({ service: 'api', operation: 'init:prisma', result: 'import_failed', error: err instanceof Error ? err.message : String(err) });
+    }
+  } else {
+    logger.warn({ service: 'api', operation: 'init:prisma', result: 'skipped', reason: 'DATABASE_URL not set' });
+  }
+
+  // Redis
+  if (process.env['REDIS_URL']) {
+    try {
+      const { RedisCache } = await import('@regwatch/ai-core');
+      redisCache = new RedisCache(process.env['REDIS_URL']!);
+      logger.info({ service: 'api', operation: 'init:redis', result: 'configured' });
+    } catch (err) {
+      // Fallback: create a minimal Redis connection for health checks
+      try {
+        const Redis = (await import('ioredis')).default;
+        const redis = new Redis(process.env['REDIS_URL']!, {
+          lazyConnect: true,
+          maxRetriesPerRequest: 1,
+          connectTimeout: 3000,
+          retryStrategy(times: number): number | null {
+            if (times > 2) return null;
+            return Math.min(times * 200, 1000);
+          },
+        });
+        redis.on('error', () => {}); // Suppress unhandled error events
+        redisCache = {
+          ping: () => redis.ping().then(() => true).catch(() => false),
+          connect: () => redis.connect().catch(() => {}),
+          disconnect: () => redis.quit().catch(() => {}),
+        };
+        logger.info({ service: 'api', operation: 'init:redis', result: 'configured_fallback' });
+      } catch {
+        logger.warn({ service: 'api', operation: 'init:redis', result: 'import_failed', error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  } else {
+    logger.warn({ service: 'api', operation: 'init:redis', result: 'skipped', reason: 'REDIS_URL not set' });
+  }
+
+  // Neo4j
+  const neo4jUri = process.env['NEO4J_URI'];
+  const neo4jUser = process.env['NEO4J_USER'] ?? 'neo4j';
+  const neo4jPassword = process.env['NEO4J_PASSWORD'];
+  if (neo4jUri && neo4jPassword) {
+    try {
+      const { Neo4jClient } = await import('./graph/neo4jClient.js');
+      neo4j = new Neo4jClient(neo4jUri, neo4jUser, neo4jPassword);
+      logger.info({ service: 'api', operation: 'init:neo4j', result: 'configured' });
+    } catch (err) {
+      logger.warn({ service: 'api', operation: 'init:neo4j', result: 'import_failed', error: err instanceof Error ? err.message : String(err) });
+    }
+  } else {
+    logger.warn({ service: 'api', operation: 'init:neo4j', result: 'skipped', reason: 'NEO4J_URI or NEO4J_PASSWORD not set' });
+  }
+
+  return { prisma, redisCache, neo4j };
+}
+
+// ---------------------------------------------------------------------------
+// Wire routes with real or null dependencies
+// ---------------------------------------------------------------------------
+
+// Services holder — initialized in start()
+let services: { prisma: unknown; redisCache: unknown; neo4j: unknown } = {
+  prisma: null,
+  redisCache: null,
+  neo4j: null,
+};
+
 // --- Health check (no auth required) ---
-// Note: deps will be injected after service initialization
-// For now, create placeholder that will be replaced at startup
-app.use('/api', createHealthRouter({
-  prisma: null as never,
-  redis: null as never,
-  neo4j: null as never,
-}));
+// Uses a closure so it reads the current services state (populated after init)
+app.use('/api', (() => {
+  const router = createHealthRouter({
+    get prisma() { return services.prisma as HealthDeps['prisma']; },
+    get redis() { return services.redisCache as HealthDeps['redis']; },
+    get neo4j() { return services.neo4j as HealthDeps['neo4j']; },
+  });
+  return router;
+})());
 
 // --- Auth + RBAC middleware (all routes below require auth) ---
 app.use('/api', createAuthMiddleware());
@@ -67,29 +178,31 @@ app.use('/api/chat', createRateLimiter({ maxRequests: 10, windowMs: 60_000 }));
 app.use('/api', createRateLimiter({ maxRequests: 100, windowMs: 60_000 }));
 
 // --- API routes ---
-// Note: these use placeholder deps — real deps injected via initializeServer()
+// Use getters so routes access the initialized services (populated in start())
+const lazyPrisma = { get prisma() { return services.prisma as never; } };
+
 app.use('/api', createIngestionRouter({ scheduler: null as never }));
 app.use('/api', createRegulationsRouter({
-  prisma: null as never,
+  get prisma() { return services.prisma as never; },
   ragEngine: null as never,
-  redisCache: null as never,
+  get redisCache() { return services.redisCache as never; },
   graphService: null as never,
 }));
 app.use('/api', createClientsRouter({
-  prisma: null as never,
+  get prisma() { return services.prisma as never; },
   graphService: null as never,
   onboardingEngine: null as never,
 }));
 app.use('/api', createChatRouter({
-  prisma: null as never,
+  get prisma() { return services.prisma as never; },
   ragEngine: null as never,
   complianceAgent: null as never,
 }));
-app.use('/api', createAlertsRouter({ prisma: null as never }));
-app.use('/api', createSourcesRouter({ scheduler: null as never }));
-app.use('/api', createImpactRouter({ prisma: null as never }));
-app.use('/api', createCalendarRouter({ prisma: null as never }));
-app.use('/api', createMapRouter({ prisma: null as never }));
+app.use('/api', createAlertsRouter({ get prisma() { return services.prisma as never; } }));
+app.use('/api', createSourcesRouter({ get prisma() { return services.prisma as never; } }));
+app.use('/api', createImpactRouter({ get prisma() { return services.prisma as never; } }));
+app.use('/api', createCalendarRouter({ get prisma() { return services.prisma as never; } }));
+app.use('/api', createMapRouter({ get prisma() { return services.prisma as never; } }));
 
 // RBAC guards for specific routes
 app.use('/api/ingest', createRbacMiddleware(['ADMIN', 'PROFESSIONAL']));
@@ -106,19 +219,53 @@ app.use(createErrorHandler());
 // Server startup
 // ---------------------------------------------------------------------------
 
-/**
- * Initialize all services and start the server.
- * In production, this wires real dependencies.
- * For now, starts with minimal setup.
- */
 async function start(): Promise<void> {
   try {
     logger.info({
       service: 'api',
       operation: 'server:starting',
       port: PORT,
-      nodeEnv: process.env['NODE_ENV'] ?? 'development',
+      nodeEnv,
     });
+
+    // Initialize services (connects to PG, Redis, Neo4j if env vars are set)
+    services = await initServices();
+
+    // Connect services that were successfully initialized
+    const connectPromises: Promise<void>[] = [];
+
+    if (services.prisma && typeof (services.prisma as Record<string, unknown>)['$connect'] === 'function') {
+      connectPromises.push(
+        (services.prisma as { $connect(): Promise<void> }).$connect().then(() => {
+          logger.info({ service: 'api', operation: 'prisma:connected', result: 'success' });
+        }).catch((err: unknown) => {
+          logger.error({ service: 'api', operation: 'prisma:connect', result: 'error', error: err instanceof Error ? err.message : String(err) });
+        }),
+      );
+    }
+
+    if (services.redisCache && typeof (services.redisCache as Record<string, unknown>)['connect'] === 'function') {
+      connectPromises.push(
+        (services.redisCache as { connect(): Promise<void> }).connect().then(() => {
+          logger.info({ service: 'api', operation: 'redis:connected', result: 'success' });
+        }).catch((err: unknown) => {
+          logger.error({ service: 'api', operation: 'redis:connect', result: 'error', error: err instanceof Error ? err.message : String(err) });
+        }),
+      );
+    }
+
+    if (services.neo4j && typeof (services.neo4j as Record<string, unknown>)['initialize'] === 'function') {
+      connectPromises.push(
+        (services.neo4j as { initialize(): Promise<void> }).initialize().then(() => {
+          logger.info({ service: 'api', operation: 'neo4j:connected', result: 'success' });
+        }).catch((err: unknown) => {
+          logger.error({ service: 'api', operation: 'neo4j:connect', result: 'error', error: err instanceof Error ? err.message : String(err) });
+        }),
+      );
+    }
+
+    // Wait for all connections (best-effort — server starts even if some fail)
+    await Promise.allSettled(connectPromises);
 
     app.listen(PORT, () => {
       logger.info({
@@ -126,6 +273,11 @@ async function start(): Promise<void> {
         operation: 'server:started',
         port: PORT,
         result: 'success',
+        services: {
+          prisma: services.prisma ? 'configured' : 'not_configured',
+          redis: services.redisCache ? 'configured' : 'not_configured',
+          neo4j: services.neo4j ? 'configured' : 'not_configured',
+        },
       });
     });
   } catch (err) {
@@ -140,15 +292,19 @@ async function start(): Promise<void> {
 }
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+async function shutdown(): Promise<void> {
   logger.info({ service: 'api', operation: 'server:shutting_down' });
+  const p = services.prisma as Record<string, unknown> | null;
+  const r = services.redisCache as Record<string, unknown> | null;
+  const n = services.neo4j as Record<string, unknown> | null;
+  if (p && typeof p['$disconnect'] === 'function') await (p['$disconnect'] as () => Promise<void>)().catch(() => {});
+  if (r && typeof r['disconnect'] === 'function') await (r['disconnect'] as () => Promise<void>)().catch(() => {});
+  if (n && typeof n['close'] === 'function') await (n['close'] as () => Promise<void>)().catch(() => {});
   process.exit(0);
-});
+}
 
-process.on('SIGINT', () => {
-  logger.info({ service: 'api', operation: 'server:shutting_down' });
-  process.exit(0);
-});
+process.on('SIGTERM', () => { void shutdown(); });
+process.on('SIGINT', () => { void shutdown(); });
 
 start();
 

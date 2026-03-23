@@ -87,7 +87,7 @@ export function AddSourceForm({ onClose, onCreated }: Props) {
     setTestResult(null);
 
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const res = await fetch(`${API_BASE}/api/sources/test`, {
         method: 'POST',
         headers: {
@@ -119,7 +119,7 @@ export function AddSourceForm({ onClose, onCreated }: Props) {
     setSaveError(null);
 
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const res = await fetch(`${API_BASE}/api/sources`, {
         method: 'POST',
         headers: {

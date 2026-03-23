@@ -116,7 +116,7 @@ export function WorldRiskMap({ compact = false, clientId, height = 420 }: Props)
 
   const fetchData = useCallback(async () => {
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const qs = clientId ? `?clientId=${clientId}` : '';
       const res = await fetch(`${API_BASE}/api/map/risk-scores${qs}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

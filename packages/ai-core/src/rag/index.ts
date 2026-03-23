@@ -7,6 +7,7 @@ export {
   ANALYSIS_SYSTEM_PROMPT,
   buildContextPrompt,
   buildAnalysisPrompt,
+  sanitizeUserInput,
 } from './systemPrompt.js';
 export type {
   RAGQueryInput,

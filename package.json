@@ -19,6 +19,11 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
     "db:seed": "npm run db:seed --workspace=apps/api",
+    "seed:real": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-real.ts",
+    "seed:gt": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-gt-regulations.ts",
+    "seed:brazil": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-brazil-regulations.ts",
+    "seed:alerts": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-alerts.ts",
+    "seed:all": "npm run seed:real && npm run seed:gt && npm run seed:brazil && npm run seed:alerts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "infra:validate": "az bicep build -f infra/main.bicep"

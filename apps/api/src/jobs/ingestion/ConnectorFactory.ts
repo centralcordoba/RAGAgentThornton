@@ -10,6 +10,7 @@ import { SecEdgarConnector } from './connectors/SecEdgarConnector.js';
 import { EurLexConnector } from './connectors/EurLexConnector.js';
 import { BoeSpainConnector } from './connectors/BoeSpainConnector.js';
 import { DofMexicoConnector } from './connectors/DofMexicoConnector.js';
+import { DouBrazilConnector } from './connectors/DouBrazilConnector.js';
 import type { IngestionSourceConfig } from './types.js';
 import { createServiceLogger } from '../../config/logger.js';
 
@@ -24,6 +25,7 @@ const KNOWN_CONNECTORS: Record<string, new (config?: Partial<IngestionSourceConf
   EUR_LEX: EurLexConnector,
   BOE_SPAIN: BoeSpainConnector,
   DOF_MEXICO: DofMexicoConnector,
+  DOU_BRAZIL: DouBrazilConnector,
 };
 
 // ---------------------------------------------------------------------------

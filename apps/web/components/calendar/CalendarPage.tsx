@@ -11,6 +11,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { MonthView } from './MonthView';
 import { WeekView } from './WeekView';
 import { ListView } from './ListView';
+import { YearView } from './YearView';
 import { CalendarSummaryBar, type UrgencyFilter } from './CalendarSummaryBar';
 import { EventDrawer } from './EventDrawer';
 
@@ -43,10 +44,10 @@ interface Summary {
   readonly byType: readonly { type: string; count: number }[];
 }
 
-type ViewMode = 'month' | 'week' | 'list';
+type ViewMode = 'year' | 'month' | 'week' | 'list';
 
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
-const COUNTRIES = ['US', 'EU', 'ES', 'MX', 'AR', 'BR'];
+const COUNTRIES = ['US', 'EU', 'BR'];
 const TYPES = ['DEADLINE', 'FILING', 'AUDIT', 'RENEWAL', 'REGULATORY_CHANGE', 'REVIEW'];
 const AREAS = ['Financiero', 'Datos/GDPR', 'Laboral', 'Ambiental', 'Fiscal'];
 
@@ -88,7 +89,7 @@ export function CalendarPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const token = sessionStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
       const qs = new URLSearchParams();
@@ -119,29 +120,41 @@ export function CalendarPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleStatusChange = async (eventId: string, status: string) => {
-    const token = sessionStorage.getItem('auth_token');
-    await fetch(`${API_BASE}/api/calendar/events/${eventId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ status }),
-    });
+    try {
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+      const res = await fetch(`${API_BASE}/api/calendar/events/${eventId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+        console.error('Calendar status change failed:', err);
+      }
+    } catch (err) {
+      console.error('Calendar status change error:', err);
+    }
     fetchData();
     setSelectedEvent(null);
   };
 
   const handleAssign = async (eventId: string, assignedTo: string) => {
-    const token = sessionStorage.getItem('auth_token');
-    await fetch(`${API_BASE}/api/calendar/events/${eventId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ assignedTo }),
-    });
+    try {
+      const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
+      await fetch(`${API_BASE}/api/calendar/events/${eventId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ assignedTo }),
+      });
+    } catch (err) {
+      console.error('Calendar assign error:', err);
+    }
     fetchData();
   };
 
@@ -236,7 +249,7 @@ export function CalendarPage() {
 
           {/* View toggle */}
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-            {(['month', 'week', 'list'] as const).map((v) => (
+            {(['year', 'month', 'week', 'list'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => { setView(v); if (v !== 'list') setUrgencyFilter('all'); }}
@@ -244,7 +257,7 @@ export function CalendarPage() {
                   view === v ? 'bg-white shadow-sm text-brand-700 font-medium' : 'text-gray-500'
                 }`}
               >
-                {v === 'month' ? 'Mensual' : v === 'week' ? 'Semanal' : 'Lista'}
+                {v === 'year' ? 'Anual' : v === 'month' ? 'Mensual' : v === 'week' ? 'Semanal' : 'Lista'}
               </button>
             ))}
           </div>
@@ -262,6 +275,8 @@ export function CalendarPage() {
             Cargando calendario...
           </div>
         </div>
+      ) : view === 'year' ? (
+        <YearView events={events} onEventClick={setSelectedEvent} />
       ) : view === 'month' ? (
         <MonthView events={events} onEventClick={setSelectedEvent} />
       ) : view === 'week' ? (

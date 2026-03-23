@@ -66,7 +66,16 @@ describe('authMiddleware', () => {
   });
 
   it('skips auth for /health endpoint', async () => {
-    const res = await request(createApp()).get('/api/health');
+    // Auth middleware skips when req.path === '/health'.
+    // In the real server, auth is mounted at '/api', so req.path is '/health'.
+    // In this test, auth is mounted at root, so we call '/health' directly.
+    const appWithHealth = express();
+    appWithHealth.use(createRequestIdMiddleware());
+    appWithHealth.use(createAuthMiddleware());
+    appWithHealth.get('/health', (_req: Request, res: Response) => {
+      res.json({ status: 'ok' });
+    });
+    const res = await request(appWithHealth).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
   });
