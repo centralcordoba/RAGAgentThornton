@@ -1,10 +1,11 @@
 // ============================================================================
 // FILE: apps/api/src/routes/map.ts
-// Geographic risk map endpoints — risk scores per country + country detail.
+// Geographic risk map — real data from PostgreSQL.
 // ============================================================================
 
 import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import type { PrismaClient } from '@prisma/client';
 import { Errors } from '@regwatch/shared';
 import { createServiceLogger } from '../config/logger.js';
 
@@ -32,65 +33,198 @@ interface CountryRiskScore {
 // ---------------------------------------------------------------------------
 
 export interface MapRouteDeps {
-  readonly prisma: unknown;
+  readonly prisma: PrismaClient;
 }
+
+const COUNTRY_NAMES: Record<string, string> = {
+  US: 'Estados Unidos', EU: 'Union Europea', ES: 'Espana',
+  DE: 'Alemania', FR: 'Francia', IT: 'Italia', NL: 'Paises Bajos',
+  BR: 'Brasil', MX: 'Mexico', AR: 'Argentina', CL: 'Chile',
+  IE: 'Irlanda', GB: 'Reino Unido',
+};
 
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
-export function createMapRouter(_deps: MapRouteDeps): Router {
+export function createMapRouter(deps: MapRouteDeps): Router {
   const router = Router();
 
   // -----------------------------------------------------------------------
-  // GET /map/risk-scores — risk score per country
+  // GET /map/risk-scores — real risk scores from DB
   // -----------------------------------------------------------------------
-  router.get('/map/risk-scores', (req: Request, res: Response) => {
+  router.get('/map/risk-scores', async (req: Request, res: Response) => {
     const requestId = req.requestId ?? randomUUID();
-    const clientId = req.query['clientId'] as string | undefined;
 
-    logger.info({ operation: 'map:risk_scores', requestId, clientId });
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000);
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 86_400_000);
 
-    const countries = generateRiskScores(clientId);
-    res.json({ countries });
+    // Parallel queries
+    const [regulations, obligations, alerts, clients] = await Promise.all([
+      deps.prisma.regulatoryChange.findMany({
+        where: { publishedDate: { gte: thirtyDaysAgo } },
+        select: { country: true, impactLevel: true },
+      }),
+      deps.prisma.obligation.findMany({
+        select: {
+          status: true, deadline: true,
+          change: { select: { country: true } },
+          client: { select: { id: true, name: true } },
+        },
+      }),
+      deps.prisma.alert.findMany({
+        select: {
+          impactLevel: true,
+          change: { select: { country: true } },
+        },
+      }),
+      deps.prisma.client.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, countries: true },
+      }),
+    ]);
+
+    // Collect all countries with data
+    const countriesSet = new Set<string>();
+    regulations.forEach((r) => countriesSet.add(r.country));
+    obligations.forEach((o) => countriesSet.add(o.change.country));
+    // Also add countries from clients
+    clients.forEach((c) => c.countries.forEach((cc) => countriesSet.add(cc)));
+
+    const countryScores: CountryRiskScore[] = [];
+
+    for (const code of countriesSet) {
+      const countryRegs = regulations.filter((r) => r.country === code);
+      const countryObls = obligations.filter((o) => o.change.country === code);
+      const countryAlerts = alerts.filter((a) => a.change.country === code);
+      const countryClients = clients.filter((c) => c.countries.includes(code));
+
+      const alertsHigh = countryAlerts.filter((a) => a.impactLevel === 'HIGH').length;
+      const alertsMedium = countryAlerts.filter((a) => a.impactLevel === 'MEDIUM').length;
+      const overdueObligations = countryObls.filter((o) => o.status === 'OVERDUE').length;
+      const deadlines7d = countryObls.filter((o) =>
+        o.status !== 'COMPLETED' && o.deadline <= sevenDaysFromNow && o.deadline >= new Date(),
+      ).length;
+      const changes30d = countryRegs.length;
+
+      const score = calculateScore({ alertsHigh, alertsMedium, deadlines7d, changes30d, overdueObligations });
+
+      countryScores.push({
+        code,
+        name: COUNTRY_NAMES[code] ?? code,
+        score,
+        level: scoreToLevel(score),
+        alertsHigh,
+        alertsMedium,
+        deadlines7d,
+        changes30d,
+        overdueObligations,
+        clients: countryClients.map((c) => ({ id: c.id, name: c.name })),
+      });
+    }
+
+    // Sort by score descending
+    countryScores.sort((a, b) => b.score - a.score);
+
+    logger.info({
+      operation: 'map:risk_scores',
+      requestId,
+      countriesCount: countryScores.length,
+      result: 'success',
+    });
+
+    res.json({ countries: countryScores });
   });
 
   // -----------------------------------------------------------------------
-  // GET /map/country/:code/detail — detailed data for a single country
+  // GET /map/country/:code/detail — real detail from DB
   // -----------------------------------------------------------------------
-  router.get('/map/country/:code/detail', (req: Request, res: Response) => {
+  router.get('/map/country/:code/detail', async (req: Request, res: Response) => {
     const requestId = req.requestId ?? randomUUID();
     const code = req.params['code']!.toUpperCase();
 
-    logger.info({ operation: 'map:country_detail', requestId, code });
+    // Recent alerts for this country
+    const recentAlerts = await deps.prisma.alert.findMany({
+      where: { change: { country: code } },
+      select: {
+        id: true, message: true, impactLevel: true, status: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
 
-    const countryName = COUNTRY_NAMES[code];
-    if (!countryName) {
-      throw Errors.notFound(requestId, 'Country', code);
-    }
+    // Upcoming deadlines (obligations)
+    const upcomingDeadlines = await deps.prisma.obligation.findMany({
+      where: {
+        change: { country: code },
+        status: { not: 'COMPLETED' },
+      },
+      include: {
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: { deadline: 'asc' },
+      take: 5,
+    });
 
-    const detail = generateCountryDetail(code);
-    res.json(detail);
+    // Recent regulatory changes
+    const recentChanges = await deps.prisma.regulatoryChange.findMany({
+      where: { country: code },
+      select: {
+        id: true, title: true, effectiveDate: true, impactLevel: true, affectedAreas: true,
+      },
+      orderBy: { publishedDate: 'desc' },
+      take: 5,
+    });
+
+    // Clients in this country
+    const clients = await deps.prisma.client.findMany({
+      where: { isActive: true, countries: { has: code } },
+      select: { id: true, name: true },
+    });
+
+    logger.info({
+      operation: 'map:country_detail',
+      requestId,
+      code,
+      alerts: recentAlerts.length,
+      deadlines: upcomingDeadlines.length,
+      changes: recentChanges.length,
+      result: 'success',
+    });
+
+    res.json({
+      recentAlerts: recentAlerts.map((a) => ({
+        id: a.id,
+        message: a.message,
+        impactLevel: a.impactLevel,
+        status: a.status,
+        createdAt: a.createdAt.toISOString(),
+      })),
+      upcomingDeadlines: upcomingDeadlines.map((o) => ({
+        id: o.id,
+        title: o.title,
+        date: o.deadline.toISOString().split('T')[0]!,
+        daysUntil: Math.ceil((o.deadline.getTime() - Date.now()) / 86_400_000),
+        type: 'DEADLINE',
+        client: { id: o.client.id, name: o.client.name },
+        status: o.status === 'OVERDUE' ? 'OVERDUE' : 'PENDING',
+      })),
+      recentChanges: recentChanges.map((r) => ({
+        id: r.id,
+        title: r.title,
+        effectiveDate: r.effectiveDate.toISOString().split('T')[0]!,
+        impactLevel: r.impactLevel,
+        area: (r.affectedAreas as string[])[0] ?? 'regulatory',
+      })),
+      clients,
+    });
   });
 
   return router;
 }
 
 // ---------------------------------------------------------------------------
-// Country names
-// ---------------------------------------------------------------------------
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: 'Estados Unidos',
-  EU: 'Union Europea',
-  ES: 'Espana',
-  MX: 'Mexico',
-  AR: 'Argentina',
-  BR: 'Brasil',
-};
-
-// ---------------------------------------------------------------------------
-// Risk score calculation
+// Score calculation (same formula, real inputs)
 // ---------------------------------------------------------------------------
 
 function calculateScore(raw: {
@@ -106,8 +240,7 @@ function calculateScore(raw: {
     raw.deadlines7d * 8 +
     raw.changes30d * 3 +
     raw.overdueObligations * 15;
-  const normFactor = 1.2;
-  return Math.min(100, Math.round(total / normFactor));
+  return Math.min(100, Math.round(total / 1.2));
 }
 
 function scoreToLevel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'NO_DATA' {
@@ -116,183 +249,4 @@ function scoreToLevel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | '
   if (score <= 60) return 'MEDIUM';
   if (score <= 80) return 'HIGH';
   return 'CRITICAL';
-}
-
-// ---------------------------------------------------------------------------
-// Mock data generators
-// ---------------------------------------------------------------------------
-
-function generateRiskScores(_clientId?: string): CountryRiskScore[] {
-  const rawData: {
-    code: string;
-    alertsHigh: number;
-    alertsMedium: number;
-    deadlines7d: number;
-    changes30d: number;
-    overdueObligations: number;
-    clients: { id: string; name: string }[];
-  }[] = [
-    {
-      code: 'US',
-      alertsHigh: 3, alertsMedium: 5, deadlines7d: 2, changes30d: 14, overdueObligations: 1,
-      clients: [
-        { id: 'c3', name: 'TechStart Inc' },
-        { id: 'c6', name: 'GlobalBank US' },
-      ],
-    },
-    {
-      code: 'EU',
-      alertsHigh: 2, alertsMedium: 4, deadlines7d: 3, changes30d: 11, overdueObligations: 0,
-      clients: [
-        { id: 'c1', name: 'EuroTrade GmbH' },
-        { id: 'c2', name: 'FinanceCorp EU' },
-      ],
-    },
-    {
-      code: 'ES',
-      alertsHigh: 1, alertsMedium: 3, deadlines7d: 2, changes30d: 8, overdueObligations: 0,
-      clients: [
-        { id: 'c1', name: 'EuroTrade GmbH' },
-      ],
-    },
-    {
-      code: 'MX',
-      alertsHigh: 0, alertsMedium: 2, deadlines7d: 1, changes30d: 5, overdueObligations: 1,
-      clients: [
-        { id: 'c4', name: 'Banco Pacifico MX' },
-      ],
-    },
-    {
-      code: 'AR',
-      alertsHigh: 1, alertsMedium: 1, deadlines7d: 1, changes30d: 4, overdueObligations: 0,
-      clients: [
-        { id: 'c5', name: 'FinanceCorp AR' },
-      ],
-    },
-    {
-      code: 'BR',
-      alertsHigh: 0, alertsMedium: 1, deadlines7d: 0, changes30d: 3, overdueObligations: 0,
-      clients: [
-        { id: 'c7', name: 'CVM Brasil Holdings' },
-      ],
-    },
-  ];
-
-  return rawData.map((raw) => {
-    const score = calculateScore(raw);
-    return {
-      code: raw.code,
-      name: COUNTRY_NAMES[raw.code] ?? raw.code,
-      score,
-      level: scoreToLevel(score),
-      alertsHigh: raw.alertsHigh,
-      alertsMedium: raw.alertsMedium,
-      deadlines7d: raw.deadlines7d,
-      changes30d: raw.changes30d,
-      overdueObligations: raw.overdueObligations,
-      clients: raw.clients,
-    };
-  });
-}
-
-function generateCountryDetail(code: string) {
-  const countryClients: Record<string, { id: string; name: string }[]> = {
-    US: [{ id: 'c3', name: 'TechStart Inc' }, { id: 'c6', name: 'GlobalBank US' }],
-    EU: [{ id: 'c1', name: 'EuroTrade GmbH' }, { id: 'c2', name: 'FinanceCorp EU' }],
-    ES: [{ id: 'c1', name: 'EuroTrade GmbH' }],
-    MX: [{ id: 'c4', name: 'Banco Pacifico MX' }],
-    AR: [{ id: 'c5', name: 'FinanceCorp AR' }],
-    BR: [{ id: 'c7', name: 'CVM Brasil Holdings' }],
-  };
-
-  const areasByCountry: Record<string, string> = {
-    US: 'Financiero', EU: 'Datos/GDPR', ES: 'Laboral',
-    MX: 'Fiscal', AR: 'Financiero', BR: 'Financiero',
-  };
-
-  const clients = countryClients[code] ?? [];
-  const area = areasByCountry[code] ?? 'General';
-
-  return {
-    recentAlerts: [
-      {
-        id: randomUUID(),
-        message: `Nuevo requisito de reporte trimestral detectado en ${COUNTRY_NAMES[code]}`,
-        impactLevel: 'HIGH',
-        status: 'PENDING_REVIEW',
-        createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-      },
-      {
-        id: randomUUID(),
-        message: `Actualizacion de sanciones por incumplimiento — ${area}`,
-        impactLevel: 'MEDIUM',
-        status: 'SENT',
-        createdAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
-      },
-      {
-        id: randomUUID(),
-        message: `Cambio en definiciones de entidades reguladas`,
-        impactLevel: 'MEDIUM',
-        status: 'ACKNOWLEDGED',
-        createdAt: new Date(Date.now() - 8 * 86_400_000).toISOString(),
-      },
-    ],
-    upcomingDeadlines: [
-      {
-        id: randomUUID(),
-        title: `Reporte trimestral — ${area}`,
-        date: dateOffset(5),
-        daysUntil: 5,
-        type: 'DEADLINE',
-        client: clients[0] ?? { id: 'unknown', name: 'Sin cliente' },
-        status: 'PENDING',
-      },
-      {
-        id: randomUUID(),
-        title: `Filing anual — Regulador ${code}`,
-        date: dateOffset(18),
-        daysUntil: 18,
-        type: 'FILING',
-        client: clients[0] ?? { id: 'unknown', name: 'Sin cliente' },
-        status: 'PENDING',
-      },
-      {
-        id: randomUUID(),
-        title: `Revision interna AML`,
-        date: dateOffset(35),
-        daysUntil: 35,
-        type: 'REVIEW',
-        client: clients[0] ?? { id: 'unknown', name: 'Sin cliente' },
-        status: 'PENDING',
-      },
-    ],
-    recentChanges: [
-      {
-        id: randomUUID(),
-        title: `Modificacion plazo de reporte — ${area}`,
-        effectiveDate: dateOffset(30),
-        impactLevel: 'HIGH',
-        area,
-      },
-      {
-        id: randomUUID(),
-        title: `Actualizacion requisitos de capital`,
-        effectiveDate: dateOffset(45),
-        impactLevel: 'MEDIUM',
-        area: 'Financiero',
-      },
-      {
-        id: randomUUID(),
-        title: `Nueva guia de cumplimiento digital`,
-        effectiveDate: dateOffset(60),
-        impactLevel: 'LOW',
-        area: 'Datos/GDPR',
-      },
-    ],
-    clients,
-  };
-}
-
-function dateOffset(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().split('T')[0]!;
 }

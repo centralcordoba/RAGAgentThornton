@@ -20,6 +20,7 @@ import {
   createImpactRouter,
   createCalendarRouter,
   createMapRouter,
+  createHorizonRouter,
 } from './routes/index.js';
 import {
   createAuthMiddleware,
@@ -78,6 +79,7 @@ async function initServices(): Promise<{
   let prisma: unknown = null;
   let redisCache: unknown = null;
   let neo4j: unknown = null;
+  let graphService: unknown = null;
 
   // PostgreSQL (via Prisma)
   if (process.env['DATABASE_URL']) {
@@ -137,6 +139,15 @@ async function initServices(): Promise<{
       const { Neo4jClient } = await import('./graph/neo4jClient.js');
       neo4j = new Neo4jClient(neo4jUri, neo4jUser, neo4jPassword);
       logger.info({ service: 'api', operation: 'init:neo4j', result: 'configured' });
+
+      // Create ComplianceGraphService
+      try {
+        const { ComplianceGraphService } = await import('./graph/complianceGraph.js');
+        graphService = new ComplianceGraphService(neo4j);
+        logger.info({ service: 'api', operation: 'init:graph_service', result: 'configured' });
+      } catch (gsErr) {
+        logger.warn({ service: 'api', operation: 'init:graph_service', result: 'failed', error: gsErr instanceof Error ? gsErr.message : String(gsErr) });
+      }
     } catch (err) {
       logger.warn({ service: 'api', operation: 'init:neo4j', result: 'import_failed', error: err instanceof Error ? err.message : String(err) });
     }
@@ -144,7 +155,77 @@ async function initServices(): Promise<{
     logger.warn({ service: 'api', operation: 'init:neo4j', result: 'skipped', reason: 'NEO4J_URI or NEO4J_PASSWORD not set' });
   }
 
-  return { prisma, redisCache, neo4j };
+  // RAG Engine (Azure OpenAI + AI Search)
+  let ragEngine: unknown = null;
+  const aoaiEndpoint = process.env['AZURE_OPENAI_ENDPOINT'];
+  const aoaiKey = process.env['AZURE_OPENAI_API_KEY'];
+  const searchEndpoint = process.env['AZURE_SEARCH_ENDPOINT'];
+  const searchKey = process.env['AZURE_SEARCH_API_KEY'];
+
+  if (aoaiEndpoint && aoaiKey && searchEndpoint && searchKey) {
+    try {
+      const { RegulatoryRAG } = await import('@regwatch/ai-core');
+      const { OpenAI } = await import('openai');
+
+      const openai = new OpenAI({
+        apiKey: aoaiKey,
+        baseURL: `${aoaiEndpoint}/openai/deployments/${process.env['AZURE_OPENAI_DEPLOYMENT_CHAT'] ?? process.env['AZURE_OPENAI_GPT_DEPLOYMENT'] ?? 'gpt-4o'}`,
+        defaultQuery: { 'api-version': process.env['AZURE_OPENAI_API_VERSION'] ?? '2024-06-01' },
+        defaultHeaders: { 'api-key': aoaiKey },
+      });
+
+      const embeddingDeployment = process.env['AZURE_OPENAI_DEPLOYMENT_EMBEDDINGS'] ?? process.env['AZURE_OPENAI_EMBEDDING_DEPLOYMENT'] ?? 'text-embedding-3-large';
+
+      const embeddingClient = new OpenAI({
+        apiKey: aoaiKey,
+        baseURL: `${aoaiEndpoint}/openai/deployments/${embeddingDeployment}`,
+        defaultQuery: { 'api-version': process.env['AZURE_OPENAI_API_VERSION'] ?? '2024-06-01' },
+        defaultHeaders: { 'api-key': aoaiKey },
+      });
+
+      ragEngine = new RegulatoryRAG(
+        {
+          azureOpenAIEndpoint: aoaiEndpoint,
+          azureOpenAIApiKey: aoaiKey,
+          azureOpenAIApiVersion: process.env['AZURE_OPENAI_API_VERSION'] ?? '2024-06-01',
+          gptDeployment: process.env['AZURE_OPENAI_DEPLOYMENT_CHAT'] ?? 'gpt-4o',
+          embeddingDeployment,
+          searchEndpoint,
+          searchApiKey: searchKey,
+          searchIndexName: process.env['AZURE_SEARCH_INDEX_NAME'] ?? 'regulatory-documents',
+        },
+        {
+          generateEmbedding: async (text: string) => {
+            const res = await embeddingClient.embeddings.create({ model: embeddingDeployment, input: text });
+            return res.data[0]!.embedding;
+          },
+          cacheGet: async () => null, // Redis cache handled separately
+          cacheSet: async () => {},
+          getClientObligations: async () => [],
+          chatCompletion: async (params: { systemPrompt: string; userMessage: string; maxTokens: number; temperature: number }) => {
+            const res = await openai.chat.completions.create({
+              model: process.env['AZURE_OPENAI_DEPLOYMENT_CHAT'] ?? 'gpt-4o',
+              messages: [
+                { role: 'system', content: params.systemPrompt },
+                { role: 'user', content: params.userMessage },
+              ],
+              max_tokens: params.maxTokens,
+              temperature: params.temperature,
+            });
+            return res.choices[0]?.message?.content ?? '';
+          },
+        },
+      );
+
+      logger.info({ service: 'api', operation: 'init:rag_engine', result: 'configured' });
+    } catch (err) {
+      logger.warn({ service: 'api', operation: 'init:rag_engine', result: 'failed', error: err instanceof Error ? err.message : String(err) });
+    }
+  } else {
+    logger.warn({ service: 'api', operation: 'init:rag_engine', result: 'skipped', reason: 'Azure OpenAI or AI Search env vars not set' });
+  }
+
+  return { prisma, redisCache, neo4j, graphService, ragEngine };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,18 +265,18 @@ const lazyPrisma = { get prisma() { return services.prisma as never; } };
 app.use('/api', createIngestionRouter({ scheduler: null as never }));
 app.use('/api', createRegulationsRouter({
   get prisma() { return services.prisma as never; },
-  ragEngine: null as never,
+  get ragEngine() { return (services as Record<string, unknown>)['ragEngine'] as never ?? null; },
   get redisCache() { return services.redisCache as never; },
   graphService: null as never,
 }));
 app.use('/api', createClientsRouter({
   get prisma() { return services.prisma as never; },
-  graphService: null as never,
-  onboardingEngine: null as never,
+  get graphService() { return (services as Record<string, unknown>)['graphService'] as never ?? null; },
+  onboardingEngine: null,
 }));
 app.use('/api', createChatRouter({
   get prisma() { return services.prisma as never; },
-  ragEngine: null as never,
+  get ragEngine() { return (services as Record<string, unknown>)['ragEngine'] as never ?? null; },
   complianceAgent: null as never,
 }));
 app.use('/api', createAlertsRouter({ get prisma() { return services.prisma as never; } }));
@@ -203,6 +284,7 @@ app.use('/api', createSourcesRouter({ get prisma() { return services.prisma as n
 app.use('/api', createImpactRouter({ get prisma() { return services.prisma as never; } }));
 app.use('/api', createCalendarRouter({ get prisma() { return services.prisma as never; } }));
 app.use('/api', createMapRouter({ get prisma() { return services.prisma as never; } }));
+app.use('/api', createHorizonRouter({ get prisma() { return services.prisma as never; } }));
 
 // RBAC guards for specific routes
 app.use('/api/ingest', createRbacMiddleware(['ADMIN', 'PROFESSIONAL']));
@@ -275,13 +357,18 @@ async function start(): Promise<void> {
       });
     });
 
+    let retryCount = 0;
     server.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        logger.warn({ service: 'api', operation: 'server:port_in_use', port: PORT, result: 'retry' });
+      if (err.code === 'EADDRINUSE' && retryCount < 3) {
+        retryCount++;
+        logger.warn({ service: 'api', operation: 'server:port_in_use', port: PORT, retry: retryCount, result: 'retry' });
         setTimeout(() => {
           server.close();
           server.listen(PORT);
-        }, 1000);
+        }, 1000 * retryCount);
+      } else if (err.code === 'EADDRINUSE') {
+        logger.fatal({ service: 'api', operation: 'server:port_in_use', port: PORT, result: 'giving_up' });
+        process.exit(1);
       } else {
         throw err;
       }

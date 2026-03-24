@@ -156,29 +156,8 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
       try {
         let response;
 
-        if (useAgent) {
-          response = await deps.complianceAgent.execute({
-            tenantId,
-            clientId,
-            question: message,
-            conversationHistory: history.map((h) => ({ role: h.role, content: h.content })),
-          });
-
-          // Stream the agent response
-          res.write(`event: message\ndata: ${JSON.stringify({
-            conversationId: convId,
-            analysis: {
-              answer: response.answer,
-              sources: response.sources,
-              confidence: response.confidence,
-              reasoning: response.reasoning,
-              impactedObligations: response.graphInsights.obligations.map((o) => o.id),
-            },
-            relatedObligations: [],
-            cached: false,
-            toolsUsed: response.toolsUsed,
-          })}\n\n`);
-        } else {
+        if (deps.ragEngine && !useAgent) {
+          // Use RAG engine (Azure OpenAI + AI Search)
           const ragInput: RAGQueryInput = {
             tenantId,
             clientId,
@@ -194,15 +173,48 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
           response = await deps.ragEngine.query(ragInput);
 
           res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+        } else {
+          // Fallback: Prisma-based search when RAG engine is not available
+          const dbResults = await deps.prisma.regulatoryChange.findMany({
+            where: {
+              OR: [
+                { title: { contains: message.split(' ').slice(0, 3).join(' '), mode: 'insensitive' } },
+                { summary: { contains: message.split(' ').slice(0, 3).join(' '), mode: 'insensitive' } },
+              ],
+            },
+            take: 5,
+            orderBy: { publishedDate: 'desc' },
+          });
+
+          const obligations = clientId ? await deps.prisma.obligation.findMany({
+            where: { clientId },
+            take: 5,
+          }) : [];
+
+          const answer = dbResults.length > 0
+            ? `Basado en ${dbResults.length} regulaciones encontradas:\n\n${dbResults.map((r, i) => `${i + 1}. **${r.title}** (${r.country}, ${r.impactLevel})\n   ${r.summary.slice(0, 200)}`).join('\n\n')}${obligations.length > 0 ? `\n\n**Obligaciones vinculadas (${obligations.length}):**\n${obligations.map((o) => `- ${o.title} [${o.status}] — deadline: ${o.deadline.toISOString().split('T')[0]}`).join('\n')}` : ''}`
+            : 'No se encontraron regulaciones relacionadas con tu consulta. Intenta reformular la pregunta.';
+
+          response = {
+            conversationId: convId,
+            analysis: {
+              answer,
+              sources: dbResults.map((r) => ({ documentId: r.id, title: r.title, relevanceScore: 0.8, snippet: r.summary.slice(0, 150), sourceUrl: r.sourceUrl })),
+              confidence: dbResults.length > 0 ? 0.7 : 0.3,
+              reasoning: dbResults.length > 0 ? `Busqueda en base de datos: ${dbResults.length} regulaciones encontradas` : 'Sin resultados en la base de datos',
+              impactedObligations: obligations.map((o) => o.id),
+            },
+            relatedObligations: obligations,
+            cached: false,
+          };
+
+          res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
         }
 
-        // Update conversation history in Redis
+        // Update conversation history
+        const answerText = response && 'analysis' in response ? (response as { analysis: { answer: string } }).analysis.answer : '';
         history.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
-        history.push({
-          role: 'assistant',
-          content: useAgent ? (response as { answer: string }).answer : (response as { analysis: { answer: string } }).analysis.answer,
-          timestamp: new Date().toISOString(),
-        });
+        history.push({ role: 'assistant', content: answerText, timestamp: new Date().toISOString() });
         await store.set(convId, history);
 
         res.write(`event: done\ndata: ${JSON.stringify({ duration: Date.now() - startTime })}\n\n`);
@@ -219,28 +231,8 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
       // Standard JSON response
       let responseBody;
 
-      if (useAgent) {
-        const agentResponse = await deps.complianceAgent.execute({
-          tenantId,
-          clientId,
-          question: message,
-          conversationHistory: history.map((h) => ({ role: h.role, content: h.content })),
-        });
-
-        responseBody = {
-          conversationId: convId,
-          analysis: {
-            answer: agentResponse.answer,
-            sources: agentResponse.sources,
-            confidence: agentResponse.confidence,
-            reasoning: agentResponse.reasoning,
-            impactedObligations: agentResponse.graphInsights.obligations.map((o) => o.id),
-          },
-          relatedObligations: [],
-          cached: false,
-          toolsUsed: agentResponse.toolsUsed,
-        };
-      } else {
+      if (deps.ragEngine) {
+        // Use RAG engine
         const ragInput: RAGQueryInput = {
           tenantId,
           clientId,
@@ -252,8 +244,44 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
             impactLevel: filters?.impactLevel ?? undefined,
           },
         };
-
         responseBody = await deps.ragEngine.query(ragInput);
+      } else {
+        // Fallback: Prisma DB search
+        const keywords = message.split(' ').filter((w) => w.length > 3).slice(0, 3);
+        const searchTerm = keywords.join(' ');
+
+        const dbResults = await deps.prisma.regulatoryChange.findMany({
+          where: searchTerm ? {
+            OR: [
+              { title: { contains: searchTerm, mode: 'insensitive' } },
+              { summary: { contains: searchTerm, mode: 'insensitive' } },
+            ],
+          } : {},
+          take: 5,
+          orderBy: { publishedDate: 'desc' },
+        });
+
+        const obligations = clientId ? await deps.prisma.obligation.findMany({
+          where: { clientId },
+          take: 5,
+        }) : [];
+
+        const answerText = dbResults.length > 0
+          ? `Basado en ${dbResults.length} regulaciones encontradas:\n\n${dbResults.map((r, i) => `${i + 1}. **${r.title}** (${r.country}, ${r.impactLevel})\n   ${r.summary.slice(0, 200)}`).join('\n\n')}`
+          : 'No se encontraron regulaciones relacionadas. Intenta reformular la pregunta.';
+
+        responseBody = {
+          conversationId: convId,
+          analysis: {
+            answer: answerText,
+            sources: dbResults.map((r) => ({ documentId: r.id, title: r.title, relevanceScore: 0.8, snippet: r.summary.slice(0, 150), sourceUrl: r.sourceUrl })),
+            confidence: dbResults.length > 0 ? 0.7 : 0.3,
+            reasoning: `Busqueda en base de datos: ${dbResults.length} resultados`,
+            impactedObligations: obligations.map((o) => o.id),
+          },
+          relatedObligations: obligations,
+          cached: false,
+        };
       }
 
       // Update conversation history in Redis

@@ -193,6 +193,20 @@ export default function RegulationsPage() {
             rawContent: (detail?.regulation?.['rawContent'] as string) ?? selectedRegulation.summary,
           }}
           analysis={detail?.analysis ?? null}
+          changedClauses={(detail?.['changedClauses'] as Record<string, unknown>[])?.map((c) => ({
+            id: (c['id'] as string) ?? '',
+            title: (c['title'] as string) ?? '',
+            description: (c['description'] as string) ?? '',
+            deadline: (c['deadline'] as string) ?? '',
+            status: (c['status'] as string) ?? 'PENDING',
+            priority: (c['priority'] as string) ?? 'MEDIUM',
+            clientName: (c['clientName'] as string) ?? '',
+          })) ?? []}
+          affectedClients={(detail?.['affectedClients'] as Record<string, unknown>[])?.map((c) => ({
+            id: (c['id'] as string) ?? '',
+            name: (c['name'] as string) ?? '',
+            countries: (c['countries'] as string[]) ?? [],
+          })) ?? []}
           isLoadingAnalysis={!detail}
           onClose={() => setSelectedId(null)}
         />

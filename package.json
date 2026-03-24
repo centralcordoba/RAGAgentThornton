@@ -23,7 +23,9 @@
     "seed:gt": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-gt-regulations.ts",
     "seed:brazil": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-brazil-regulations.ts",
     "seed:alerts": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-alerts.ts",
-    "seed:all": "npm run seed:real && npm run seed:gt && npm run seed:brazil && npm run seed:alerts",
+    "seed:neo4j": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-neo4j.ts",
+    "seed:horizon": "npx tsx --tsconfig tsconfig.json apps/api/scripts/seed-horizon.ts",
+    "seed:all": "npm run seed:real && npm run seed:gt && npm run seed:brazil && npm run seed:alerts && npm run seed:neo4j && npm run seed:horizon",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "infra:validate": "az bicep build -f infra/main.bicep"

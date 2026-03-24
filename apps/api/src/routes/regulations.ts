@@ -87,16 +87,17 @@ export function createRegulationsRouter(deps: RegulationRouteDeps): Router {
     const requestId = req.headers['x-request-id'] as string ?? randomUUID();
     const { id } = req.params;
 
-    // Check Redis cache first
-    const cached = await deps.redisCache.getRegulation(id!);
-    if (cached) {
-      logger.debug({
-        operation: 'regulations:get_detail',
-        requestId,
-        regulationId: id,
-        cacheHit: true,
-        result: 'cache_hit',
-      });
+    // Check Redis cache first (if available)
+    let cached = null;
+    if (deps.redisCache && typeof deps.redisCache.getRegulation === 'function') {
+      try {
+        cached = await deps.redisCache.getRegulation(id!);
+        if (cached) {
+          logger.debug({ operation: 'regulations:get_detail', requestId, regulationId: id, cacheHit: true });
+        }
+      } catch {
+        // Cache miss or unavailable
+      }
     }
 
     const regulation = cached ?? await deps.prisma.regulatoryChange.findUnique({
@@ -106,6 +107,27 @@ export function createRegulationsRouter(deps: RegulationRouteDeps): Router {
     if (!regulation) {
       throw Errors.notFound(requestId, 'Regulation', id!);
     }
+
+    // Fetch obligations linked to this regulation + affected clients
+    const obligations = await deps.prisma.obligation.findMany({
+      where: { changeId: id },
+      include: { client: { select: { id: true, name: true, countries: true } } },
+      orderBy: { deadline: 'asc' },
+    });
+
+    const affectedClients = Array.from(
+      new Map(obligations.map((o) => [o.client.id, o.client])).values(),
+    );
+
+    const changedClauses = obligations.map((o) => ({
+      id: o.id,
+      title: o.title,
+      description: o.description,
+      deadline: o.deadline.toISOString().split('T')[0]!,
+      status: o.status,
+      priority: o.priority,
+      clientName: o.client.name,
+    }));
 
     // Generate AI analysis on-demand
     // Extract tenantId from auth context (set by middleware)
@@ -158,8 +180,8 @@ export function createRegulationsRouter(deps: RegulationRouteDeps): Router {
     }
 
     // Cache the regulation for future access
-    if (!cached) {
-      void deps.redisCache.setRegulation(id!, regulation as Parameters<typeof deps.redisCache.setRegulation>[1]);
+    if (!cached && deps.redisCache && typeof deps.redisCache.setRegulation === 'function') {
+      void deps.redisCache.setRegulation(id!, regulation as Parameters<typeof deps.redisCache.setRegulation>[1]).catch(() => {});
     }
 
     logger.info({
@@ -173,6 +195,8 @@ export function createRegulationsRouter(deps: RegulationRouteDeps): Router {
     res.json({
       regulation,
       analysis,
+      changedClauses,
+      affectedClients,
     });
   });
 

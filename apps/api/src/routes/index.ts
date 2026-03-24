@@ -18,3 +18,5 @@ export { createCalendarRouter } from './calendar.js';
 export type { CalendarRouteDeps } from './calendar.js';
 export { createMapRouter } from './map.js';
 export type { MapRouteDeps } from './map.js';
+export { createHorizonRouter } from './horizon.js';
+export type { HorizonRouteDeps } from './horizon.js';

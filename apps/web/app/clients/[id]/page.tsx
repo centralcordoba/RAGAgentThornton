@@ -4,14 +4,14 @@
 // ============================================================================
 
 import { RiskScore } from '@/components/ui/RiskScore';
+import { ComplianceSparkline } from '@/components/ui/ComplianceSparkline';
 import { CountryFlag } from '@/components/ui/CountryFlag';
 import { Badge } from '@/components/ui/Badge';
-import { DeadlineChip } from '@/components/ui/DeadlineChip';
+// DeadlineChip removed — using structured deadline section instead
 import { ObligationGraph } from '@/components/client/ObligationGraph';
 import type { GraphNode, GraphEdge } from '@/components/client/ObligationGraph';
 import { ComplianceTimeline } from '@/components/client/ComplianceTimeline';
 import type { TimelineEvent } from '@/components/client/ComplianceTimeline';
-import { AlertsPanel } from '@/components/client/AlertsPanel';
 import type { AlertItem } from '@/components/client/AlertsPanel';
 
 // ---------------------------------------------------------------------------
@@ -178,17 +178,110 @@ export default async function ClientDashboardPage({
         />
       </div>
 
-      {/* Upcoming deadlines strip */}
-      {upcomingDeadlines.length > 0 && (
-        <div className="card px-5 py-3">
-          <div className="flex items-center gap-3 overflow-x-auto">
-            <span className="text-xs font-semibold text-gray-500 flex-shrink-0">Próximos:</span>
-            {upcomingDeadlines.map((d) => (
-              <DeadlineChip key={d.id} date={d.dueDate} label={d.title} />
-            ))}
-          </div>
+      {/* Compliance score trend */}
+      {dashboard.scoreTrend && (dashboard.scoreTrend as { month: string; score: number }[]).length > 1 && (
+        <div className="card p-5">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Tendencia de Compliance (12 meses)</h2>
+          <ComplianceSparkline
+            data={dashboard.scoreTrend as { month: string; score: number }[]}
+            height={140}
+            showLabels
+          />
         </div>
       )}
+
+      {/* Deadlines — separated into overdue vs upcoming */}
+      {upcomingDeadlines.length > 0 && (() => {
+        const now = new Date().toISOString().split('T')[0]!;
+        const overdue = upcomingDeadlines.filter((d) => d.dueDate < now);
+        const upcoming = upcomingDeadlines.filter((d) => d.dueDate >= now);
+
+        return (
+          <div className="card overflow-hidden">
+            <div className="card-header flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900">Obligaciones y deadlines</h2>
+              <div className="flex items-center gap-3 text-[11px]">
+                {overdue.length > 0 && (
+                  <span className="flex items-center gap-1 text-red-600 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    {overdue.length} vencidas
+                  </span>
+                )}
+                {upcoming.length > 0 && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    {upcoming.length} proximas
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Overdue section */}
+            {overdue.length > 0 && (
+              <div className="border-b border-red-100 bg-red-50/50">
+                <div className="px-4 py-2 flex items-center gap-2 border-b border-red-100">
+                  <svg className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <span className="text-[11px] font-semibold text-red-700 uppercase tracking-wide">
+                    Vencidas — accion requerida
+                  </span>
+                </div>
+                <div className="divide-y divide-red-100">
+                  {overdue.map((d) => {
+                    const daysOverdue = Math.abs(Math.ceil((new Date(d.dueDate).getTime() - Date.now()) / 86_400_000));
+                    return (
+                      <div key={d.id} className="px-4 py-2.5 flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-900 truncate">{d.title}</p>
+                          <p className="text-[11px] text-gray-500">{d.dueDate}</p>
+                        </div>
+                        <span className="text-[11px] font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {daysOverdue}d vencido
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming section */}
+            {upcoming.length > 0 && (
+              <div>
+                <div className="px-4 py-2 flex items-center gap-2 border-b border-gray-100">
+                  <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                  </svg>
+                  <span className="text-[11px] font-semibold text-green-700 uppercase tracking-wide">
+                    Proximas
+                  </span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {upcoming.map((d) => {
+                    const daysUntil = Math.ceil((new Date(d.dueDate).getTime() - Date.now()) / 86_400_000);
+                    const urgencyColor = daysUntil <= 30 ? 'text-amber-600 bg-amber-100' :
+                      daysUntil <= 90 ? 'text-blue-600 bg-blue-100' : 'text-green-600 bg-green-100';
+                    return (
+                      <div key={d.id} className="px-4 py-2.5 flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-900 truncate">{d.title}</p>
+                          <p className="text-[11px] text-gray-500">{d.dueDate}</p>
+                        </div>
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${urgencyColor}`}>
+                          {daysUntil}d
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Graph + Timeline */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -211,14 +304,41 @@ export default async function ClientDashboardPage({
         )}
       </div>
 
-      {/* Alerts */}
+      {/* Alerts (read-only in server component) */}
       {alerts.length > 0 && (
-        <AlertsPanel
-          alerts={alerts}
-          onAcknowledge={async () => {}}
-          onBulkAcknowledge={async () => {}}
-          userRole="PROFESSIONAL"
-        />
+        <div className="card overflow-hidden">
+          <div className="card-header">
+            <h2 className="text-sm font-semibold text-gray-900">Alertas recientes ({alerts.length})</h2>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {alerts.slice(0, 5).map((a: AlertItem) => (
+              <div key={a.id} className="px-4 py-3 flex items-start gap-3">
+                <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                  a.impactLevel === 'HIGH' ? 'bg-red-500' :
+                  a.impactLevel === 'MEDIUM' ? 'bg-amber-500' : 'bg-green-500'
+                }`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-900 line-clamp-2">{a.message}</p>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+                    <span className={`font-medium ${
+                      a.status === 'PENDING_REVIEW' ? 'text-amber-600' :
+                      a.status === 'SENT' ? 'text-blue-600' :
+                      a.status === 'ACKNOWLEDGED' ? 'text-green-600' : 'text-gray-500'
+                    }`}>{a.status}</span>
+                    <span>{a.channel}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {alerts.length > 5 && (
+            <div className="px-4 py-2 bg-gray-50 text-center">
+              <a href="/alerts" className="text-xs text-brand-700 hover:underline">
+                Ver todas las alertas ({alerts.length})
+              </a>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -274,6 +394,7 @@ interface DashboardResponse {
   readonly recentChanges: readonly Record<string, unknown>[];
   readonly pendingAlerts: readonly Record<string, unknown>[];
   readonly upcomingDeadlines: readonly Record<string, unknown>[];
+  readonly scoreTrend?: readonly { month: string; score: number }[];
 }
 
 interface GraphResponse {

@@ -136,24 +136,32 @@ enum SourceStatus {
 // ---------------------------------------------------------------------------
 
 model RegulatoryChange {
-  id                 String      @id @default(uuid()) @db.Uuid
-  sourceId           String      @map("source_id") @db.Uuid
-  externalDocumentId String      @map("external_document_id")
-  title              String
-  summary            String      @db.Text
-  rawContent         String      @default("") @map("raw_content") @db.Text
-  effectiveDate      DateTime    @map("effective_date") @db.Date
-  publishedDate      DateTime    @map("published_date") @db.Date
-  impactLevel        ImpactLevel @map("impact_level")
-  affectedAreas      String[]    @map("affected_areas")
-  affectedIndustries String[]    @map("affected_industries")
-  country            String      @db.VarChar(2)
-  jurisdiction       String
-  version            String      @default("1.0")
-  language           String      @default("en") @db.VarChar(5)
-  sourceUrl          String      @default("") @map("source_url")
-  createdAt          DateTime    @default(now()) @map("created_at")
-  updatedAt          DateTime    @updatedAt @map("updated_at")
+  id                    String           @id @default(uuid()) @db.Uuid
+  sourceId              String           @map("source_id") @db.Uuid
+  externalDocumentId    String           @map("external_document_id")
+  title                 String
+  summary               String           @db.Text
+  rawContent            String           @default("") @map("raw_content") @db.Text
+  effectiveDate         DateTime         @map("effective_date") @db.Date
+  publishedDate         DateTime         @map("published_date") @db.Date
+  impactLevel           ImpactLevel      @map("impact_level")
+  affectedAreas         String[]         @map("affected_areas")
+  affectedIndustries    String[]         @map("affected_industries")
+  country               String           @db.VarChar(2)
+  jurisdiction          String
+  version               String           @default("1.0")
+  language              String           @default("en") @db.VarChar(5)
+  sourceUrl             String           @default("") @map("source_url")
+  // Horizon Scanning fields
+  stage                 RegulatoryStage  @default(EFFECTIVE)
+  approvalProbability   Float?           @map("approval_probability")
+  commentDeadline       DateTime?        @map("comment_deadline") @db.Date
+  proposedEffectiveDate DateTime?        @map("proposed_effective_date") @db.Date
+  estimatedFinalDate    DateTime?        @map("estimated_final_date") @db.Date
+  proposingAgency       String?          @map("proposing_agency")
+  //
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
 
   // Relations
   source      RegulatorySource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
@@ -166,6 +174,7 @@ model RegulatoryChange {
   @@index([impactLevel])
   @@index([publishedDate])
   @@index([sourceId])
+  @@index([stage])
   @@map("regulatory_changes")
 }
 
@@ -173,6 +182,13 @@ enum ImpactLevel {
   HIGH
   MEDIUM
   LOW
+}
+
+enum RegulatoryStage {
+  PROPOSED
+  COMMENT_PERIOD
+  FINAL_RULE
+  EFFECTIVE
 }
 
 // ---------------------------------------------------------------------------

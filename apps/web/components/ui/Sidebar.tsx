@@ -21,6 +21,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: '📊' },
   { label: 'Clientes', href: '/clients', icon: '🏢' },
   { label: 'Regulaciones', href: '/regulations', icon: '📜' },
+  { label: 'Horizon Scanning', href: '/horizon', icon: '🔭' },
   { label: 'Alertas', href: '/alerts', icon: '🔔' },
   { label: 'Onboarding', href: '/onboarding', icon: '➕' },
   { label: 'Impacto', href: '/impact', icon: '🎯' },

@@ -8,6 +8,7 @@
 import { Badge, impactToBadgeVariant } from '../ui/Badge';
 import { CountryFlag, getCountryName } from '../ui/CountryFlag';
 import { RiskScore } from '../ui/RiskScore';
+import { RegulatoryDiff } from './RegulatoryDiff';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +20,22 @@ interface AIAnalysisData {
   readonly confidence: number;
   readonly reasoning: string;
   readonly impactedObligations: readonly string[];
+}
+
+interface ChangedClauseData {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly deadline: string;
+  readonly status: string;
+  readonly priority: string;
+  readonly clientName: string;
+}
+
+interface AffectedClientData {
+  readonly id: string;
+  readonly name: string;
+  readonly countries: readonly string[];
 }
 
 interface RegulationDetailProps {
@@ -37,6 +54,8 @@ interface RegulationDetailProps {
     readonly sourceUrl: string;
   };
   readonly analysis: AIAnalysisData | null;
+  readonly changedClauses?: readonly ChangedClauseData[];
+  readonly affectedClients?: readonly AffectedClientData[];
   readonly isLoadingAnalysis: boolean;
   readonly onClose: () => void;
 }
@@ -48,6 +67,8 @@ interface RegulationDetailProps {
 export function RegulationDetail({
   regulation,
   analysis,
+  changedClauses,
+  affectedClients,
   isLoadingAnalysis,
   onClose,
 }: RegulationDetailProps) {
@@ -138,15 +159,39 @@ export function RegulationDetail({
             </details>
           )}
 
-          {/* Source link */}
-          <a
-            href={regulation.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline"
-          >
-            Ver documento fuente completo →
-          </a>
+          {/* Action buttons */}
+          <div className="flex items-center gap-3">
+            <a
+              href={regulation.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline"
+            >
+              Ver fuente →
+            </a>
+            <a
+              href={`/reports/${regulation.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-brand-700 text-white hover:bg-brand-800 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              Exportar PDF
+            </a>
+          </div>
+
+          {/* Regulatory Diff — obligations + affected clients */}
+          {((changedClauses && changedClauses.length > 0) || (affectedClients && affectedClients.length > 0)) && (
+            <div className="border-t border-gray-200 pt-5">
+              <RegulatoryDiff
+                clauses={changedClauses ?? []}
+                clients={affectedClients ?? []}
+                regulationTitle={regulation.title}
+              />
+            </div>
+          )}
 
           {/* AI Analysis */}
           <div className="border-t border-gray-200 pt-5">

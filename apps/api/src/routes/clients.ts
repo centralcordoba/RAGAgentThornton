@@ -23,8 +23,8 @@ const logger = createServiceLogger('route:clients');
 
 export interface ClientRouteDeps {
   readonly prisma: PrismaClient;
-  readonly graphService: ComplianceGraphService;
-  readonly onboardingEngine: OnboardingEngine;
+  readonly graphService: ComplianceGraphService | null;
+  readonly onboardingEngine: OnboardingEngine | null;
 }
 
 export function createClientsRouter(deps: ClientRouteDeps): Router {
@@ -225,6 +225,8 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       recentChanges,
       pendingAlerts: recentAlerts,
       upcomingDeadlines,
+      // Compliance score trend — monthly scores based on obligation deadlines
+      scoreTrend: buildScoreTrend(obligations),
     });
   });
 
@@ -248,7 +250,35 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
       throw Errors.notFound(requestId, 'Client', id!);
     }
 
-    // Build graph from Prisma data (no Neo4j dependency)
+    // Try Neo4j first for richer graph traversal, fallback to Prisma
+    if (deps.graphService) {
+      try {
+        const neo4jGraph = await deps.graphService.getClientGraph(id!, tenantId, depth);
+        if (neo4jGraph.nodes.length > 0) {
+          logger.info({
+            operation: 'clients:graph',
+            requestId,
+            clientId: id,
+            source: 'neo4j',
+            nodes: neo4jGraph.nodes.length,
+            edges: neo4jGraph.edges.length,
+            result: 'success',
+          });
+          res.json(neo4jGraph);
+          return;
+        }
+      } catch (err) {
+        logger.warn({
+          operation: 'clients:graph_neo4j_fallback',
+          requestId,
+          clientId: id,
+          error: err instanceof Error ? err.message : String(err),
+          result: 'fallback_to_prisma',
+        });
+      }
+    }
+
+    // Fallback: build graph from Prisma data
     const client = await deps.prisma.client.findFirst({
       where: { id, tenantId },
       include: {
@@ -344,6 +374,44 @@ export function createClientsRouter(deps: ClientRouteDeps): Router {
 
 function thirtyDaysAgo(): Date {
   return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Build a monthly compliance score trend from obligations.
+ * For each month (last 12), calculates what % of obligations were on-time vs overdue.
+ * Returns array of { month: 'YYYY-MM', score: 0-100 }.
+ */
+function buildScoreTrend(
+  obligations: readonly { deadline: Date; status: string; createdAt: Date }[],
+): readonly { month: string; score: number }[] {
+  if (obligations.length === 0) return [];
+
+  const trend: { month: string; score: number }[] = [];
+  const now = new Date();
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    // Count obligations that existed by this month
+    const active = obligations.filter((o) => o.createdAt <= monthEnd);
+    if (active.length === 0) {
+      trend.push({ month: monthStr, score: 100 });
+      continue;
+    }
+
+    // Count how many were on-time at month end
+    const onTime = active.filter((o) => {
+      if (o.status === 'COMPLETED') return true;
+      return o.deadline >= monthEnd; // deadline hadn't passed yet
+    }).length;
+
+    const score = Math.round((onTime / active.length) * 100);
+    trend.push({ month: monthStr, score });
+  }
+
+  return trend;
 }
 
 interface AuthenticatedRequest extends Request {
