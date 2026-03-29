@@ -38,5 +38,9 @@ azurite-data/
 # Prisma
 apps/api/src/db/generated/
 
+# Claude
+.claude/
+CLAUDE.md
+
 # Misc
 *.tsbuildinfo

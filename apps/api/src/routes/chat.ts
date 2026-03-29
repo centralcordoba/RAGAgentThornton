@@ -67,25 +67,75 @@ function createInMemoryConversationStore(): ConversationStore {
 
 let conversationStore: ConversationStore | null = null;
 
+/**
+ * Creates a Redis-backed conversation store with automatic in-memory fallback.
+ * If Redis is unavailable, operations silently fall back to the memory store.
+ */
+function createResilientRedisConversationStore(redisUrl: string): ConversationStore {
+  const memoryFallback = createInMemoryConversationStore();
+  let redisAvailable = false;
+  let redis: Redis | null = null;
+
+  try {
+    redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+      enableOfflineQueue: false,
+    });
+    redis.connect()
+      .then(() => { redisAvailable = true; })
+      .catch(() => {
+        redisAvailable = false;
+        logger.warn({
+          operation: 'chat:conversation_store',
+          result: 'redis_connect_failed',
+          fallback: 'memory',
+        });
+      });
+
+    redis.on('error', () => { redisAvailable = false; });
+    redis.on('ready', () => { redisAvailable = true; });
+  } catch {
+    return memoryFallback;
+  }
+
+  return {
+    async get(conversationId: string): Promise<ConversationEntry[]> {
+      if (!redisAvailable || !redis) return memoryFallback.get(conversationId);
+      try {
+        const key = `conv:${conversationId}`;
+        const raw = await redis.get(key);
+        if (!raw) return memoryFallback.get(conversationId);
+        return JSON.parse(raw) as ConversationEntry[];
+      } catch {
+        return memoryFallback.get(conversationId);
+      }
+    },
+    async set(conversationId: string, entries: ConversationEntry[]): Promise<void> {
+      // Always save to memory as fallback
+      await memoryFallback.set(conversationId, entries);
+
+      if (!redisAvailable || !redis) return;
+      try {
+        const key = `conv:${conversationId}`;
+        const trimmed = entries.length > CONVERSATION_MAX_ENTRIES
+          ? entries.slice(-CONVERSATION_MAX_ENTRIES)
+          : entries;
+        await redis.set(key, JSON.stringify(trimmed), 'EX', CONVERSATION_TTL);
+      } catch {
+        // Redis write failed, memory fallback already saved
+      }
+    },
+  };
+}
+
 function getConversationStore(): ConversationStore {
   if (conversationStore) return conversationStore;
 
   const redisUrl = process.env['REDIS_URL'];
   if (redisUrl) {
-    const redis = new Redis(redisUrl, {
-      maxRetriesPerRequest: 1,
-      lazyConnect: true,
-      enableOfflineQueue: false,
-    });
-    redis.connect().catch(() => {
-      logger.warn({
-        operation: 'chat:conversation_store',
-        result: 'redis_connect_failed',
-        fallback: 'memory',
-      });
-    });
-    conversationStore = createRedisConversationStore(redis);
-    logger.info({ operation: 'chat:conversation_store', backend: 'redis' });
+    conversationStore = createResilientRedisConversationStore(redisUrl);
+    logger.info({ operation: 'chat:conversation_store', backend: 'redis_with_fallback' });
   } else {
     conversationStore = createInMemoryConversationStore();
     logger.warn({
@@ -109,16 +159,25 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
 
   router.post('/chat', async (req: Request, res: Response) => {
     const requestId = req.headers['x-request-id'] as string ?? randomUUID();
-    const tenantId = (req as AuthenticatedRequest).tenantId!;
     const startTime = Date.now();
+
+    try {
+    const tenantId = (req as AuthenticatedRequest).tenantId ?? 'default';
 
     // Validate request
     const parsed = ChatRequestSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw Errors.validation(requestId, parsed.error.issues);
+      res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        requestId,
+        details: parsed.error.issues,
+      });
+      return;
     }
 
     const { clientId, message, conversationId, filters } = parsed.data;
+    const effectiveClientId = clientId ?? undefined;
 
     // Check SSE streaming preference
     const wantStreaming = req.headers['accept'] === 'text/event-stream';
@@ -135,7 +194,7 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
       operation: 'chat:query',
       requestId,
       tenantId,
-      clientId,
+      clientId: effectiveClientId ?? 'global',
       conversationId: convId,
       useAgent,
       messageLength: message.length,
@@ -160,7 +219,7 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
           // Use RAG engine (Azure OpenAI + AI Search)
           const ragInput: RAGQueryInput = {
             tenantId,
-            clientId,
+            clientId: effectiveClientId ?? '',
             question: message,
             conversationId: convId,
             filters: {
@@ -175,36 +234,12 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
           res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
         } else {
           // Fallback: Prisma-based search when RAG engine is not available
-          const dbResults = await deps.prisma.regulatoryChange.findMany({
-            where: {
-              OR: [
-                { title: { contains: message.split(' ').slice(0, 3).join(' '), mode: 'insensitive' } },
-                { summary: { contains: message.split(' ').slice(0, 3).join(' '), mode: 'insensitive' } },
-              ],
-            },
-            take: 5,
-            orderBy: { publishedDate: 'desc' },
-          });
-
-          const obligations = clientId ? await deps.prisma.obligation.findMany({
-            where: { clientId },
-            take: 5,
-          }) : [];
-
-          const answer = dbResults.length > 0
-            ? `Basado en ${dbResults.length} regulaciones encontradas:\n\n${dbResults.map((r, i) => `${i + 1}. **${r.title}** (${r.country}, ${r.impactLevel})\n   ${r.summary.slice(0, 200)}`).join('\n\n')}${obligations.length > 0 ? `\n\n**Obligaciones vinculadas (${obligations.length}):**\n${obligations.map((o) => `- ${o.title} [${o.status}] — deadline: ${o.deadline.toISOString().split('T')[0]}`).join('\n')}` : ''}`
-            : 'No se encontraron regulaciones relacionadas con tu consulta. Intenta reformular la pregunta.';
+          const result = await prismaFallbackSearch(deps.prisma, message, effectiveClientId);
 
           response = {
             conversationId: convId,
-            analysis: {
-              answer,
-              sources: dbResults.map((r) => ({ documentId: r.id, title: r.title, relevanceScore: 0.8, snippet: r.summary.slice(0, 150), sourceUrl: r.sourceUrl })),
-              confidence: dbResults.length > 0 ? 0.7 : 0.3,
-              reasoning: dbResults.length > 0 ? `Busqueda en base de datos: ${dbResults.length} regulaciones encontradas` : 'Sin resultados en la base de datos',
-              impactedObligations: obligations.map((o) => o.id),
-            },
-            relatedObligations: obligations,
+            analysis: result.analysis,
+            relatedObligations: result.obligations,
             cached: false,
           };
 
@@ -235,7 +270,7 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
         // Use RAG engine
         const ragInput: RAGQueryInput = {
           tenantId,
-          clientId,
+          clientId: effectiveClientId ?? '',
           question: message,
           conversationId: convId,
           filters: {
@@ -247,39 +282,11 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
         responseBody = await deps.ragEngine.query(ragInput);
       } else {
         // Fallback: Prisma DB search
-        const keywords = message.split(' ').filter((w) => w.length > 3).slice(0, 3);
-        const searchTerm = keywords.join(' ');
-
-        const dbResults = await deps.prisma.regulatoryChange.findMany({
-          where: searchTerm ? {
-            OR: [
-              { title: { contains: searchTerm, mode: 'insensitive' } },
-              { summary: { contains: searchTerm, mode: 'insensitive' } },
-            ],
-          } : {},
-          take: 5,
-          orderBy: { publishedDate: 'desc' },
-        });
-
-        const obligations = clientId ? await deps.prisma.obligation.findMany({
-          where: { clientId },
-          take: 5,
-        }) : [];
-
-        const answerText = dbResults.length > 0
-          ? `Basado en ${dbResults.length} regulaciones encontradas:\n\n${dbResults.map((r, i) => `${i + 1}. **${r.title}** (${r.country}, ${r.impactLevel})\n   ${r.summary.slice(0, 200)}`).join('\n\n')}`
-          : 'No se encontraron regulaciones relacionadas. Intenta reformular la pregunta.';
-
+        const result = await prismaFallbackSearch(deps.prisma, message, effectiveClientId);
         responseBody = {
           conversationId: convId,
-          analysis: {
-            answer: answerText,
-            sources: dbResults.map((r) => ({ documentId: r.id, title: r.title, relevanceScore: 0.8, snippet: r.summary.slice(0, 150), sourceUrl: r.sourceUrl })),
-            confidence: dbResults.length > 0 ? 0.7 : 0.3,
-            reasoning: `Busqueda en base de datos: ${dbResults.length} resultados`,
-            impactedObligations: obligations.map((o) => o.id),
-          },
-          relatedObligations: obligations,
+          analysis: result.analysis,
+          relatedObligations: result.obligations,
           cached: false,
         };
       }
@@ -302,6 +309,25 @@ export function createChatRouter(deps: ChatRouteDeps): Router {
       });
 
       res.json(responseBody);
+    }
+
+    } catch (err) {
+      logger.error({
+        operation: 'chat:unhandled_error',
+        requestId,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        duration: Date.now() - startTime,
+        result: 'error',
+      });
+
+      if (!res.headersSent) {
+        res.status(500).json({
+          code: 'CHAT_ERROR',
+          message: 'Error al procesar la consulta. Intenta de nuevo.',
+          requestId,
+        });
+      }
     }
   });
 
@@ -334,6 +360,183 @@ function shouldUseAgent(message: string): boolean {
 
   const lower = message.toLowerCase();
   return agentKeywords.some((kw) => lower.includes(kw));
+}
+
+/**
+ * Prisma-based fallback search when RAG engine (Azure OpenAI + AI Search) is unavailable.
+ * Searches each keyword separately with OR logic for better recall.
+ * Falls back to latest regulations if no keywords match.
+ */
+async function prismaFallbackSearch(
+  prisma: PrismaClient,
+  message: string,
+  clientId: string | undefined,
+): Promise<{
+  analysis: { answer: string; sources: readonly { documentId: string; title: string; relevanceScore: number; snippet: string; sourceUrl: string }[]; confidence: number; reasoning: string; impactedObligations: readonly string[] };
+  obligations: readonly unknown[];
+}> {
+  const keywords = message
+    .split(/[\s,;.?!]+/)
+    .filter((w) => w.length > 3)
+    .map((w) => w.toLowerCase())
+    .slice(0, 5);
+
+  const country = detectCountryFromMessage(message);
+  const supportedList = Object.values(SUPPORTED_COUNTRIES).join(', ');
+
+  // --- Case 1: Unsupported country detected ---
+  if (country && !country.supported) {
+    return {
+      analysis: {
+        answer: `Actualmente no tenemos cobertura regulatoria para **${country.name}**.\n\nRegWatch AI monitorea regulaciones de: **${supportedList}**.\n\nSi necesitas incorporar ${country.name}, podemos configurar un nuevo connector de ingestion. Contacta al equipo de administracion o preguntame sobre cualquiera de los paises que ya monitoreamos.`,
+        sources: [],
+        confidence: 0.9,
+        reasoning: `Pais detectado: ${country.name} (${country.code}). No soportado — respuesta informativa`,
+        impactedObligations: [],
+      },
+      obligations: [],
+    };
+  }
+
+  // --- Build search query ---
+  const orConditions = keywords.flatMap((kw) => [
+    { title: { contains: kw, mode: 'insensitive' as const } },
+    { summary: { contains: kw, mode: 'insensitive' as const } },
+  ]);
+
+  if (country?.supported) {
+    orConditions.push({ country: { equals: country.code } });
+  }
+
+  let dbResults = await prisma.regulatoryChange.findMany({
+    where: orConditions.length > 0 ? { OR: orConditions } : {},
+    take: 5,
+    orderBy: { publishedDate: 'desc' },
+  });
+
+  // If supported country detected but no results, try country-only
+  if (dbResults.length === 0 && country?.supported) {
+    dbResults = await prisma.regulatoryChange.findMany({
+      where: { country: country.code },
+      take: 5,
+      orderBy: { publishedDate: 'desc' },
+    });
+  }
+
+  const obligations = clientId
+    ? await prisma.obligation.findMany({ where: { clientId }, take: 5 })
+    : [];
+
+  // --- Case 2: Found matching regulations ---
+  if (dbResults.length > 0) {
+    let answer = `Encontre ${dbResults.length} regulaciones relacionadas:\n\n${dbResults.map((r, i) => `${i + 1}. **${r.title}** (${r.country}, ${r.impactLevel})\n   ${r.summary.slice(0, 200)}`).join('\n\n')}`;
+    if (obligations.length > 0) {
+      answer += `\n\n**Obligaciones vinculadas (${obligations.length}):**\n${obligations.map((o) => `- ${o.title} [${o.status}] — deadline: ${o.deadline.toISOString().split('T')[0]}`).join('\n')}`;
+    }
+    return {
+      analysis: {
+        answer,
+        sources: dbResults.map((r) => ({
+          documentId: r.id, title: r.title, relevanceScore: 0.8,
+          snippet: r.summary.slice(0, 150), sourceUrl: r.sourceUrl,
+        })),
+        confidence: 0.7,
+        reasoning: `Busqueda por keywords [${keywords.join(', ')}]${country ? ` + pais ${country.code}` : ''}: ${dbResults.length} resultados`,
+        impactedObligations: obligations.map((o) => o.id),
+      },
+      obligations,
+    };
+  }
+
+  // --- Case 3: Supported country but no data yet ---
+  if (country?.supported) {
+    return {
+      analysis: {
+        answer: `Todavia no hay regulaciones de **${country.name}** en la base de datos. El connector esta configurado pero aun no se ha ejecutado la ingestion.\n\nPodes cargar datos desde la seccion **Fuentes** o preguntarme sobre otro pais. Actualmente tenemos datos de: **${supportedList}**.`,
+        sources: [],
+        confidence: 0.5,
+        reasoning: `Pais soportado ${country.name} (${country.code}) sin datos indexados`,
+        impactedObligations: [],
+      },
+      obligations: [],
+    };
+  }
+
+  // --- Case 4: No country, no keyword match ---
+  const total = await prisma.regulatoryChange.count();
+  if (total === 0) {
+    return {
+      analysis: {
+        answer: 'La base de datos esta vacia. Para comenzar, ejecuta la ingestion desde la seccion **Fuentes** o corre `npm run seed:real` para cargar datos de demo.',
+        sources: [],
+        confidence: 0.9,
+        reasoning: 'Base de datos vacia',
+        impactedObligations: [],
+      },
+      obligations: [],
+    };
+  }
+
+  return {
+    analysis: {
+      answer: `No encontre resultados para tu consulta. Intenta con terminos mas especificos o preguntame sobre:\n\n- Regulaciones de un pais: *"regulaciones de Brasil"*\n- Un tema regulatorio: *"crypto"*, *"ESG"*, *"lavado de activos"*\n- Obligaciones de un cliente: *"obligaciones de FinanceCorp"*\n\nPaises disponibles: **${supportedList}**.`,
+      sources: [],
+      confidence: 0.9,
+      reasoning: `Sin resultados para keywords [${keywords.join(', ')}]. Respuesta de guia`,
+      impactedObligations: [],
+    },
+    obligations: [],
+  };
+}
+
+/** Countries with active connectors and data in RegWatch AI. */
+const SUPPORTED_COUNTRIES: Record<string, string> = {
+  US: 'Estados Unidos', SG: 'Singapur', AR: 'Argentina', BR: 'Brasil',
+  MX: 'Mexico', ES: 'España', EU: 'Union Europea',
+};
+
+/**
+ * Detect country reference from natural language.
+ * Returns { code, name, supported } — supported=false means we recognized
+ * the country but don't have a connector for it.
+ */
+function detectCountryFromMessage(message: string): { code: string; name: string; supported: boolean } | null {
+  const lower = message.toLowerCase();
+
+  const countryMap: Record<string, { names: readonly string[]; displayName: string }> = {
+    'US': { names: ['estados unidos', 'united states', 'usa', 'eeuu', 'sec ', 'sec,', 'norteamerica'], displayName: 'Estados Unidos' },
+    'SG': { names: ['singapur', 'singapore', 'mas '], displayName: 'Singapur' },
+    'AR': { names: ['argentina', 'afip', 'bcra', 'buenos aires', 'infoleg'], displayName: 'Argentina' },
+    'BR': { names: ['brasil', 'brazil', 'brasileñ', 'bcb ', 'cvm ', 'lgpd', 'dou '], displayName: 'Brasil' },
+    'MX': { names: ['mexico', 'méxico', 'mexicano', 'cnbv', 'dof ', 'banxico'], displayName: 'Mexico' },
+    'ES': { names: ['españa', 'spain', 'spanish', 'español', 'boe ', 'cnmv'], displayName: 'España' },
+    'EU': { names: ['europa', 'europe', 'european', 'europeo', 'eur-lex', 'dora', 'mifid', 'gdpr'], displayName: 'Union Europea' },
+    // Countries we can recognize but DON'T support yet
+    'CL': { names: ['chile', 'chileno', 'cmf '], displayName: 'Chile' },
+    'CO': { names: ['colombia', 'colombian'], displayName: 'Colombia' },
+    'PE': { names: ['peru', 'perú', 'peruano'], displayName: 'Peru' },
+    'UY': { names: ['uruguay', 'uruguayo'], displayName: 'Uruguay' },
+    'JO': { names: ['jordania', 'jordan'], displayName: 'Jordania' },
+    'JP': { names: ['japon', 'japan', 'japones'], displayName: 'Japon' },
+    'CN': { names: ['china', 'chino', 'beijing'], displayName: 'China' },
+    'IN': { names: ['india', 'indian', 'mumbai'], displayName: 'India' },
+    'GB': { names: ['reino unido', 'united kingdom', 'uk ', 'england', 'london', 'fca '], displayName: 'Reino Unido' },
+    'DE': { names: ['alemania', 'germany', 'german', 'bafin'], displayName: 'Alemania' },
+    'FR': { names: ['francia', 'france', 'french', 'amf '], displayName: 'Francia' },
+    'AU': { names: ['australia', 'australian', 'asic '], displayName: 'Australia' },
+    'CA': { names: ['canada', 'canadien'], displayName: 'Canada' },
+    'KR': { names: ['corea', 'korea', 'korean', 'seoul'], displayName: 'Corea del Sur' },
+    'SA': { names: ['arabia saudita', 'saudi', 'riyadh'], displayName: 'Arabia Saudita' },
+    'AE': { names: ['emiratos', 'emirates', 'dubai', 'abu dhabi'], displayName: 'Emiratos Arabes' },
+  };
+
+  for (const [code, { names, displayName }] of Object.entries(countryMap)) {
+    if (names.some((name) => lower.includes(name))) {
+      return { code, name: displayName, supported: code in SUPPORTED_COUNTRIES };
+    }
+  }
+
+  return null;
 }
 
 interface AuthenticatedRequest extends Request {

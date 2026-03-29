@@ -26,17 +26,14 @@ interface CountryOption {
 const AVAILABLE_COUNTRIES: readonly CountryOption[] = [
   { code: 'US', name: 'Estados Unidos', region: 'Norteamérica', flag: '🇺🇸', x: 22, y: 32 },
   { code: 'MX', name: 'México', region: 'LATAM', flag: '🇲🇽', x: 18, y: 42 },
-  { code: 'CO', name: 'Colombia', region: 'LATAM', flag: '🇨🇴', x: 26, y: 48 },
-  { code: 'PE', name: 'Perú', region: 'LATAM', flag: '🇵🇪', x: 24, y: 56 },
   { code: 'BR', name: 'Brasil', region: 'LATAM', flag: '🇧🇷', x: 35, y: 58 },
-  { code: 'CL', name: 'Chile', region: 'LATAM', flag: '🇨🇱', x: 27, y: 70 },
   { code: 'AR', name: 'Argentina', region: 'LATAM', flag: '🇦🇷', x: 30, y: 72 },
-  { code: 'UY', name: 'Uruguay', region: 'LATAM', flag: '🇺🇾', x: 33, y: 68 },
   { code: 'ES', name: 'España', region: 'Europa', flag: '🇪🇸', x: 48, y: 34 },
   { code: 'EU', name: 'Unión Europea', region: 'Europa', flag: '🇪🇺', x: 52, y: 28 },
+  { code: 'SG', name: 'Singapur', region: 'Asia-Pacífico', flag: '🇸🇬', x: 78, y: 50 },
 ];
 
-const REGIONS = ['Norteamérica', 'LATAM', 'Europa'] as const;
+const REGIONS = ['Norteamérica', 'LATAM', 'Europa', 'Asia-Pacífico'] as const;
 
 export function StepCountries({ selected, onChange, onNext, onBack }: StepCountriesProps) {
   const toggle = (code: string) => {

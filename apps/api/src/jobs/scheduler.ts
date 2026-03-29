@@ -4,8 +4,8 @@
 //
 // Schedule:
 //   Every 10 min  — SEC EDGAR (rate limit: 10 req/s, exponential backoff)
-//   Every 1 hour  — EUR-Lex, BOE Spain
-//   Every 24 hours — DOF Mexico (6am UTC), future LATAM connectors
+//   Every 1 hour  — EUR-Lex, BOE Spain, DOU Brazil, Infoleg Argentina, MAS Singapore
+//   Every 24 hours — DOF Mexico (6am UTC)
 //
 // Implemented as a standalone process that can run as:
 //   - Azure Functions timer trigger (production)
@@ -19,6 +19,9 @@ import { SecEdgarConnector } from './ingestion/connectors/SecEdgarConnector.js';
 import { EurLexConnector } from './ingestion/connectors/EurLexConnector.js';
 import { BoeSpainConnector } from './ingestion/connectors/BoeSpainConnector.js';
 import { DofMexicoConnector } from './ingestion/connectors/DofMexicoConnector.js';
+import { DouBrazilConnector } from './ingestion/connectors/DouBrazilConnector.js';
+import { InfolegArgentinaConnector } from './ingestion/connectors/InfolegArgentinaConnector.js';
+import { MasSingaporeConnector } from './ingestion/connectors/MasSingaporeConnector.js';
 import type { BaseIngestionJob } from './ingestion/BaseIngestionJob.js';
 
 const logger = createServiceLogger('scheduler');
@@ -74,9 +77,12 @@ export class IngestionScheduler {
     const eurLex = new EurLexConnector();
     const boeSpain = new BoeSpainConnector();
     const dofMexico = new DofMexicoConnector();
+    const douBrazil = new DouBrazilConnector();
+    const infolegArgentina = new InfolegArgentinaConnector();
+    const masSingapore = new MasSingaporeConnector();
 
     // Initialize all connectors with shared dependencies
-    const connectors = [secEdgar, eurLex, boeSpain, dofMexico];
+    const connectors = [secEdgar, eurLex, boeSpain, dofMexico, douBrazil, infolegArgentina, masSingapore];
     for (const connector of connectors) {
       connector.initialize({
         embeddingFn: deps.embeddingFn,
@@ -115,6 +121,27 @@ export class IngestionScheduler {
         intervalMs: 1 * DAY,
         runAtUtcHour: 6, // 6am UTC
         enabled: overrides['DOF_MEXICO'] ?? true,
+      },
+      {
+        name: 'DOU_BRAZIL',
+        connector: douBrazil,
+        intervalMs: 1 * HOUR,
+        runAtUtcHour: null,
+        enabled: overrides['DOU_BRAZIL'] ?? true,
+      },
+      {
+        name: 'INFOLEG_ARGENTINA',
+        connector: infolegArgentina,
+        intervalMs: 1 * HOUR,
+        runAtUtcHour: null,
+        enabled: overrides['INFOLEG_ARGENTINA'] ?? true,
+      },
+      {
+        name: 'MAS_SINGAPORE',
+        connector: masSingapore,
+        intervalMs: 1 * HOUR,
+        runAtUtcHour: null,
+        enabled: overrides['MAS_SINGAPORE'] ?? true,
       },
     ];
   }

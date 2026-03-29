@@ -57,7 +57,7 @@ const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'
 
 // ISO 3166-1 numeric → alpha-2 mapping for our countries of interest
 const NUMERIC_TO_ALPHA2: Record<string, string> = {
-  '032': 'AR', '076': 'BR', '484': 'MX', '724': 'ES', '840': 'US',
+  '032': 'AR', '076': 'BR', '484': 'MX', '724': 'ES', '840': 'US', '702': 'SG',
 };
 
 // EU members (main ones for coloring)
@@ -71,6 +71,7 @@ const COUNTRY_CENTERS: Record<string, [number, number]> = {
   MX: [-102, 23.6],
   AR: [-64, -34],
   BR: [-51, -14.2],
+  SG: [103.8, 1.35],
 };
 
 // ---------------------------------------------------------------------------

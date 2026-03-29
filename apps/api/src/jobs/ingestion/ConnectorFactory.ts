@@ -11,6 +11,8 @@ import { EurLexConnector } from './connectors/EurLexConnector.js';
 import { BoeSpainConnector } from './connectors/BoeSpainConnector.js';
 import { DofMexicoConnector } from './connectors/DofMexicoConnector.js';
 import { DouBrazilConnector } from './connectors/DouBrazilConnector.js';
+import { InfolegArgentinaConnector } from './connectors/InfolegArgentinaConnector.js';
+import { MasSingaporeConnector } from './connectors/MasSingaporeConnector.js';
 import type { IngestionSourceConfig } from './types.js';
 import { createServiceLogger } from '../../config/logger.js';
 
@@ -26,6 +28,8 @@ const KNOWN_CONNECTORS: Record<string, new (config?: Partial<IngestionSourceConf
   BOE_SPAIN: BoeSpainConnector,
   DOF_MEXICO: DofMexicoConnector,
   DOU_BRAZIL: DouBrazilConnector,
+  INFOLEG_ARGENTINA: InfolegArgentinaConnector,
+  MAS_SINGAPORE: MasSingaporeConnector,
 };
 
 // ---------------------------------------------------------------------------

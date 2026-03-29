@@ -17,10 +17,7 @@ const COUNTRY_DATA: Readonly<Record<string, { flag: string; name: string }>> = {
   MX: { flag: '🇲🇽', name: 'México' },
   ES: { flag: '🇪🇸', name: 'España' },
   US: { flag: '🇺🇸', name: 'Estados Unidos' },
-  CL: { flag: '🇨🇱', name: 'Chile' },
-  CO: { flag: '🇨🇴', name: 'Colombia' },
-  PE: { flag: '🇵🇪', name: 'Perú' },
-  UY: { flag: '🇺🇾', name: 'Uruguay' },
+  SG: { flag: '🇸🇬', name: 'Singapur' },
   EU: { flag: '🇪🇺', name: 'Unión Europea' },
 };
 

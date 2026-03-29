@@ -3,12 +3,10 @@
 // Conversational compliance chat panel.
 //
 // Features:
-//   - SSE streaming response from agent
 //   - Context-aware: knows client if on /clients/[id]
 //   - Source chips expandible (RAG documents)
 //   - Conversation history in sessionStorage
-//   - Suggested questions based on client state
-//   - Fixed side panel or modal expandible
+//   - Suggested questions based on available data
 // ============================================================================
 
 'use client';
@@ -19,6 +17,7 @@ import type { ChatMessageData, SourceChip } from './ChatMessage';
 import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatSkeleton } from '../ui/LoadingSkeleton';
 import { useUIStore } from '@/lib/stores/uiStore';
+import { getAuthHeaders } from '@/lib/api/devAuth';
 
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000';
 
@@ -147,48 +146,44 @@ export function ComplianceChat({
     try {
       abortRef.current = new AbortController();
 
-      const chatToken = (typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null) ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
       const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-          ...(chatToken ? { Authorization: `Bearer ${chatToken}` } : {}),
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({
-          clientId: clientId ?? '',
+          clientId: clientId || null,
           message: text.trim(),
-          conversationId: chatConversationId,
+          conversationId: chatConversationId ?? null,
         }),
         signal: abortRef.current.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const errorBody = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorBody.message ?? `HTTP ${response.status}`);
       }
 
-      const contentType = response.headers.get('content-type') ?? '';
+      const data = await response.json() as SSEChatEvent;
+      handleJsonResponse(data, assistantId);
 
-      if (contentType.includes('text/event-stream') && response.body) {
-        // SSE streaming
-        await handleSSEStream(response.body, assistantId);
-      } else {
-        // JSON response (non-streaming fallback)
-        const data = await response.json() as SSEChatEvent;
-        handleJsonResponse(data, assistantId);
+      // Save the conversation ID returned by the API (UUID)
+      if (data.conversationId) {
+        setChatConversationId(data.conversationId);
       }
-
-      // Update conversation ID
-      setChatConversationId(convId);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
+
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[ComplianceChat] Error:', errorMsg, err);
 
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
             ? {
                 ...m,
-                content: 'Lo siento, hubo un error al procesar tu consulta. Intenta de nuevo.',
+                content: `Error: ${errorMsg}. Verifica que la API este corriendo en ${API_BASE}.`,
                 isStreaming: false,
                 confidence: 0,
               }
@@ -202,54 +197,7 @@ export function ComplianceChat({
   }, [isLoading, clientId, chatConversationId, convId, setChatConversationId]);
 
   // -------------------------------------------------------------------------
-  // SSE stream handler
-  // -------------------------------------------------------------------------
-
-  async function handleSSEStream(body: ReadableStream, assistantId: string): Promise<void> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6);
-          try {
-            const event = JSON.parse(dataStr) as SSEChatEvent | { duration: number };
-
-            if ('analysis' in event) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: event.analysis.answer,
-                        sources: event.analysis.sources,
-                        confidence: event.analysis.confidence,
-                        toolsUsed: event.toolsUsed ?? [],
-                        isStreaming: false,
-                      }
-                    : m,
-                ),
-              );
-            }
-          } catch {
-            // Skip unparseable SSE data
-          }
-        }
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // JSON response handler (non-streaming)
+  // JSON response handler
   // -------------------------------------------------------------------------
 
   function handleJsonResponse(data: SSEChatEvent, assistantId: string): void {

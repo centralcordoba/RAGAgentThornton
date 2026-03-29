@@ -313,9 +313,137 @@ async function seedHorizon(): Promise<void> {
   log('BRAZIL', `  ${brCount} Brazilian proposals indexed`);
 
   // =========================================================================
+  // 5. Argentina — Known proposed regulations (BCRA, CNV, UIF, AFIP)
+  // =========================================================================
+  log('ARGENTINA', 'Adding Argentine regulatory proposals...');
+
+  const infolegSource = await prisma.regulatorySource.upsert({
+    where: { country_name: { country: 'AR', name: 'Infoleg Argentina' } },
+    update: {},
+    create: {
+      name: 'Infoleg Argentina', country: 'AR', jurisdiction: 'AR-FED',
+      url: 'https://www.boletinoficial.gob.ar', type: 'LEGISLATIVE',
+      connectorType: 'RSS', isActive: true, checkIntervalMinutes: 60,
+      baseUrl: 'https://www.boletinoficial.gob.ar/seccion/primera',
+      regulatoryArea: 'financial,fiscal', frequency: 'hourly',
+    },
+  });
+
+  const AR_PROPOSALS = [
+    { id: 'bcra-psp-capital-2026', title: 'BCRA — Requisitos de capital minimo para Proveedores de Servicios de Pago (PSP)', prob: 0.80, agency: 'Banco Central de la Republica Argentina', areas: ['banking', 'digital-finance'], industries: ['fintech', 'banking', 'payments'], impact: 'HIGH' as const },
+    { id: 'cnv-esg-reporte-2026', title: 'CNV — Reporte de Sustentabilidad obligatorio alineado con ISSB para emisoras', prob: 0.70, agency: 'Comision Nacional de Valores', areas: ['sustainability', 'securities', 'disclosure'], industries: ['public-companies', 'financial-services'], impact: 'HIGH' as const },
+    { id: 'uif-vasp-registro-2026', title: 'UIF — Registro obligatorio de VASP y debida diligencia reforzada para activos virtuales', prob: 0.75, agency: 'Unidad de Informacion Financiera', areas: ['aml', 'digital-finance'], industries: ['fintech', 'banking'], impact: 'HIGH' as const },
+    { id: 'afip-factura-monotributo-2026', title: 'AFIP/ARCA — Facturacion electronica universal para monotributistas y pequeños contribuyentes', prob: 0.85, agency: 'AFIP/ARCA', areas: ['fiscal', 'compliance'], industries: ['general', 'retail', 'services'], impact: 'MEDIUM' as const },
+    { id: 'bcra-interoperabilidad-2026', title: 'BCRA — Interoperabilidad obligatoria entre billeteras virtuales y cuentas bancarias', prob: 0.70, agency: 'Banco Central de la Republica Argentina', areas: ['banking', 'digital-finance', 'payments'], industries: ['banking', 'fintech'], impact: 'MEDIUM' as const },
+  ];
+
+  let arCount = 0;
+  for (const prop of AR_PROPOSALS) {
+    const version = `${prop.id}:proposal`;
+    const existing = await prisma.regulatoryChange.findUnique({
+      where: { sourceId_externalDocumentId_version: { sourceId: infolegSource.id, externalDocumentId: prop.id, version } },
+    });
+    if (existing) continue;
+
+    await prisma.regulatoryChange.create({
+      data: {
+        sourceId: infolegSource.id,
+        externalDocumentId: prop.id,
+        title: prop.title,
+        summary: `Propuesta regulatoria argentina: ${prop.title}. En tramite en ${prop.agency}.`,
+        rawContent: '',
+        effectiveDate: new Date('2027-01-01'),
+        publishedDate: new Date('2025-08-01'),
+        impactLevel: prop.impact,
+        affectedAreas: prop.areas,
+        affectedIndustries: prop.industries,
+        country: 'AR',
+        jurisdiction: 'AR-FED',
+        version,
+        language: 'es',
+        sourceUrl: `https://www.boletinoficial.gob.ar/seccion/primera`,
+        stage: 'PROPOSED',
+        approvalProbability: prop.prob,
+        commentDeadline: new Date('2026-09-30'),
+        proposedEffectiveDate: new Date('2027-01-01'),
+        estimatedFinalDate: new Date('2026-11-01'),
+        proposingAgency: prop.agency,
+      },
+    });
+    arCount++;
+    log('ARGENTINA', `  + [PROPOSED] ${prop.title.slice(0, 60)}...`);
+  }
+
+  log('ARGENTINA', `  ${arCount} Argentine proposals indexed`);
+
+  // =========================================================================
+  // 6. Singapore — Known proposed regulations (MAS)
+  // =========================================================================
+  log('SINGAPORE', 'Adding Singapore regulatory proposals...');
+
+  const masSource = await prisma.regulatorySource.upsert({
+    where: { country_name: { country: 'SG', name: 'MAS Singapore' } },
+    update: {},
+    create: {
+      name: 'MAS Singapore', country: 'SG', jurisdiction: 'SG',
+      url: 'https://www.mas.gov.sg', type: 'REGULATORY',
+      connectorType: 'API', isActive: true, checkIntervalMinutes: 60,
+      baseUrl: 'https://www.mas.gov.sg/regulation/notices',
+      regulatoryArea: 'financial,aml,sustainability', frequency: 'hourly',
+    },
+  });
+
+  const SG_PROPOSALS = [
+    { id: 'mas-stablecoin-framework-2026', title: 'MAS — Stablecoin Regulatory Framework: Licence Requirements for SCS Issuers', prob: 0.85, agency: 'Monetary Authority of Singapore', areas: ['digital-finance', 'payments', 'banking'], industries: ['fintech', 'banking', 'payments'], impact: 'HIGH' as const },
+    { id: 'mas-climate-risk-enhanced-2026', title: 'MAS — Enhanced Environmental Risk Management Guidelines with TCFD Disclosure', prob: 0.80, agency: 'Monetary Authority of Singapore', areas: ['sustainability', 'banking', 'insurance'], industries: ['banking', 'insurance', 'asset-management'], impact: 'HIGH' as const },
+    { id: 'mas-aml-cosmic-2026', title: 'MAS — COSMIC Platform Mandatory Participation for AML Information Sharing', prob: 0.75, agency: 'Monetary Authority of Singapore', areas: ['aml', 'compliance'], industries: ['banking', 'fintech', 'payments'], impact: 'HIGH' as const },
+    { id: 'mas-ai-governance-trm-2026', title: 'MAS — AI Model Governance and Cloud Outsourcing Addendum to TRM Guidelines', prob: 0.70, agency: 'Monetary Authority of Singapore', areas: ['technology', 'data-protection', 'compliance'], industries: ['banking', 'insurance', 'fintech'], impact: 'MEDIUM' as const },
+    { id: 'mas-tokenisation-framework-2026', title: 'MAS — Regulatory Framework for Tokenised Securities and Digital Assets', prob: 0.65, agency: 'Monetary Authority of Singapore', areas: ['securities', 'digital-finance'], industries: ['securities', 'fintech', 'asset-management'], impact: 'MEDIUM' as const },
+  ];
+
+  let sgCount = 0;
+  for (const prop of SG_PROPOSALS) {
+    const version = `${prop.id}:proposal`;
+    const existing = await prisma.regulatoryChange.findUnique({
+      where: { sourceId_externalDocumentId_version: { sourceId: masSource.id, externalDocumentId: prop.id, version } },
+    });
+    if (existing) continue;
+
+    await prisma.regulatoryChange.create({
+      data: {
+        sourceId: masSource.id,
+        externalDocumentId: prop.id,
+        title: prop.title,
+        summary: `Singapore regulatory proposal: ${prop.title}. Under review by the ${prop.agency}.`,
+        rawContent: '',
+        effectiveDate: new Date('2027-01-01'),
+        publishedDate: new Date('2025-06-15'),
+        impactLevel: prop.impact,
+        affectedAreas: prop.areas,
+        affectedIndustries: prop.industries,
+        country: 'SG',
+        jurisdiction: 'SG',
+        version,
+        language: 'en',
+        sourceUrl: `https://www.mas.gov.sg/regulation/notices`,
+        stage: 'PROPOSED',
+        approvalProbability: prop.prob,
+        commentDeadline: new Date('2026-06-30'),
+        proposedEffectiveDate: new Date('2027-01-01'),
+        estimatedFinalDate: new Date('2026-09-01'),
+        proposingAgency: prop.agency,
+      },
+    });
+    sgCount++;
+    log('SINGAPORE', `  + [PROPOSED] ${prop.title.slice(0, 60)}...`);
+  }
+
+  log('SINGAPORE', `  ${sgCount} Singapore proposals indexed`);
+
+  // =========================================================================
   // Summary
   // =========================================================================
-  const total = stats.fedReg + stats.eurLex + stats.sec + brCount;
+  const total = stats.fedReg + stats.eurLex + stats.sec + brCount + arCount + sgCount;
   console.log('\n' + '='.repeat(60));
   log('DONE', 'Horizon Scanning seed complete!');
   console.log('='.repeat(60));
@@ -323,6 +451,8 @@ async function seedHorizon(): Promise<void> {
   console.log(`  EUR-Lex:           ${stats.eurLex} preparatory acts`);
   console.log(`  SEC:               ${stats.sec} proposed rules`);
   console.log(`  Brazil:            ${brCount} proposals`);
+  console.log(`  Argentina:         ${arCount} proposals`);
+  console.log(`  Singapore:         ${sgCount} proposals`);
   console.log(`  TOTAL:             ${total} proposals in pipeline`);
   console.log('='.repeat(60));
 

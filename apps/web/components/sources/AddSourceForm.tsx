@@ -36,7 +36,7 @@ interface TestResult {
   readonly preview: readonly PreviewDoc[];
 }
 
-const COUNTRIES = ['US', 'EU', 'ES', 'MX', 'BR', 'AR', 'CL', 'CO', 'PE', 'UY'] as const;
+const COUNTRIES = ['US', 'EU', 'ES', 'MX', 'BR', 'AR', 'SG'] as const;
 
 const CONNECTOR_TYPES = [
   { value: 'API', label: 'API REST' },

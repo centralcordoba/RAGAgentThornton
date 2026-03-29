@@ -39,15 +39,16 @@ interface RecentChangeItem {
 // ---------------------------------------------------------------------------
 
 const NUMERIC_TO_ALPHA2: Record<string, string> = {
-  '032': 'AR', '076': 'BR', '152': 'CL', '170': 'CO',
-  '484': 'MX', '604': 'PE', '840': 'US', '724': 'ES',
-  '858': 'UY', '056': 'BE', '276': 'DE', '250': 'FR',
+  '032': 'AR', '076': 'BR',
+  '484': 'MX', '840': 'US', '724': 'ES',
+  '056': 'BE', '276': 'DE', '250': 'FR',
   '380': 'IT', '528': 'NL', '620': 'PT', '040': 'AT',
+  '702': 'SG',
 };
 
 // Countries to highlight even without risk data (GT presence regions)
 const HIGHLIGHT_COUNTRIES = new Set([
-  'AR', 'BR', 'CL', 'CO', 'MX', 'PE', 'US', 'ES', 'UY',
+  'AR', 'BR', 'MX', 'US', 'ES', 'SG',
 ]);
 
 const WORLD_TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';

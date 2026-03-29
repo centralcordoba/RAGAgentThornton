@@ -24,7 +24,7 @@ interface Client {
 
 const COUNTRY_FLAGS: Record<string, string> = {
   US: '🇺🇸', EU: '🇪🇺', ES: '🇪🇸', DE: '🇩🇪', FR: '🇫🇷', BR: '🇧🇷',
-  MX: '🇲🇽', AR: '🇦🇷', CL: '🇨🇱', IT: '🇮🇹', NL: '🇳🇱',
+  MX: '🇲🇽', AR: '🇦🇷', IT: '🇮🇹', NL: '🇳🇱', SG: '🇸🇬',
 };
 
 export default function ClientsPage() {

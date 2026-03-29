@@ -56,7 +56,7 @@ export const CreateClientSchema = z.object({
 });
 
 export const ChatRequestSchema = z.object({
-  clientId: z.string().uuid(),
+  clientId: z.string().uuid().nullable().default(null),
   message: z.string().min(1).max(2000),
   conversationId: z.string().uuid().nullable().default(null),
   filters: z
