@@ -49,6 +49,7 @@ interface ImpactReport {
   readonly severityScore: number;
   readonly confidence: number;
   readonly relatedRegulations: readonly string[];
+  readonly changeId?: string;
   readonly reviewedBy: string | null;
 }
 
@@ -71,7 +72,7 @@ export function ImpactDrawer({ jurisdiction, area, score, onClose }: Props) {
 
   useEffect(() => {
     const token = sessionStorage.getItem('auth_token') ?? process.env['NEXT_PUBLIC_DEV_TOKEN'] ?? null;
-    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     const runAnalysis = async () => {
       try {

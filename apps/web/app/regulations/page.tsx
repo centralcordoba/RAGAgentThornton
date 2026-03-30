@@ -29,7 +29,7 @@ export default function RegulationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regulations, setRegulations] = useState<RegulationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [detail, setDetail] = useState<{ regulation: Record<string, unknown>; analysis: Record<string, unknown> | null } | null>(null);
+  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const { openChatForClient } = useUIStore();
 
   // Fetch regulations from API
@@ -190,9 +190,9 @@ export default function RegulationsPage() {
         <RegulationDetail
           regulation={{
             ...selectedRegulation,
-            rawContent: (detail?.regulation?.['rawContent'] as string) ?? selectedRegulation.summary,
+            rawContent: ((detail?.['regulation'] as Record<string, unknown>)?.['rawContent'] as string) ?? selectedRegulation.summary,
           }}
-          analysis={detail?.analysis ?? null}
+          analysis={(detail?.['analysis'] as { answer: string; sources: { documentId: string; title: string; relevanceScore: number }[]; confidence: number; reasoning: string; impactedObligations: string[] }) ?? null}
           changedClauses={(detail?.['changedClauses'] as Record<string, unknown>[])?.map((c) => ({
             id: (c['id'] as string) ?? '',
             title: (c['title'] as string) ?? '',
