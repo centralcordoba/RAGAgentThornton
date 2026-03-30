@@ -42,13 +42,6 @@ RUN apk add --no-cache curl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 
-RUN echo "=== Standalone structure ===" && \
-    find /tmp -maxdepth 0 2>/dev/null || true
-COPY --from=builder /app/apps/web/.next/standalone /tmp/debug-standalone
-RUN find /tmp/debug-standalone -name "server.js" -not -path "*/node_modules/*" && \
-    ls -la /tmp/debug-standalone/ && \
-    rm -rf /tmp/debug-standalone
-
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./.next/static
