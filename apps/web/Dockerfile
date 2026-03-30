@@ -42,9 +42,9 @@ RUN apk add --no-cache curl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 
-COPY --from=builder /app/apps/web/public ./public
+COPY --from=builder /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./.next/static
+COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./apps/web/.next/static
 
 USER regwatch
 EXPOSE 3001
@@ -56,4 +56,4 @@ ENV HOSTNAME=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:3001/ || exit 1
 
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]
