@@ -34,7 +34,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN cd apps/web && npx next build
 
 # ---------------------------------------------------------------------------
-# Production: standalone output
+# Production: standalone output + guaranteed node_modules
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS production
 WORKDIR /app
@@ -42,9 +42,13 @@ RUN apk add --no-cache curl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 
-COPY --from=builder /app/apps/web/public ./apps/web/public
+# Copy standalone output
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./apps/web/.next/static
+# Copy public assets and static files
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./.next/static
+# Ensure node_modules exist (standalone tracing misses deps in monorepo hoisted setup)
+COPY --from=deps --chown=regwatch:regwatch /app/node_modules ./node_modules
 
 USER regwatch
 EXPOSE 3001
@@ -56,4 +60,4 @@ ENV HOSTNAME=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:3001/ || exit 1
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
