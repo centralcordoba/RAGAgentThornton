@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.git
+.claude
+*.md
+!README.md
+.env
+.env.*
+!.env.example
+apps/api/dist
+apps/web/.next
+packages/shared/dist
+packages/ai-core/dist
+.github
+docs
