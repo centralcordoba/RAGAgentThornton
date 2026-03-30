@@ -42,9 +42,16 @@ RUN apk add --no-cache curl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 
-COPY --from=builder /app/apps/web/public ./apps/web/public
+RUN echo "=== Standalone structure ===" && \
+    find /tmp -maxdepth 0 2>/dev/null || true
+COPY --from=builder /app/apps/web/.next/standalone /tmp/debug-standalone
+RUN find /tmp/debug-standalone -name "server.js" -not -path "*/node_modules/*" && \
+    ls -la /tmp/debug-standalone/ && \
+    rm -rf /tmp/debug-standalone
+
+COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./.next/static
 
 USER regwatch
 EXPOSE 3001
@@ -56,4 +63,4 @@ ENV HOSTNAME=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:3001/ || exit 1
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
