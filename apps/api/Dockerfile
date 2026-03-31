@@ -36,6 +36,21 @@ RUN npx tsc --build --force apps/api/tsconfig.json 2>&1; \
     test -f apps/api/dist/server.js || (echo "FATAL: server.js not built" && exit 1)
 
 # ---------------------------------------------------------------------------
+# Development: hot-reload with volumes
+# ---------------------------------------------------------------------------
+FROM base AS development
+RUN apk add --no-cache openssl openssl-dev
+COPY --from=deps /app/node_modules ./node_modules
+COPY tsconfig.json ./
+COPY packages/shared/ packages/shared/
+COPY packages/ai-core/ packages/ai-core/
+COPY apps/api/ apps/api/
+RUN cd apps/api && npx prisma generate 2>/dev/null || true
+EXPOSE 3000
+ENV NODE_ENV=development
+CMD ["npx", "tsx", "watch", "apps/api/src/server.ts"]
+
+# ---------------------------------------------------------------------------
 # Production: minimal runtime
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS production

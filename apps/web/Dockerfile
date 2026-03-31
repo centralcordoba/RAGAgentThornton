@@ -36,6 +36,21 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN cd apps/web && npx next build
 
 # ---------------------------------------------------------------------------
+# Development: hot-reload with volumes
+# ---------------------------------------------------------------------------
+FROM base AS development
+COPY --from=deps /app/node_modules ./node_modules
+COPY tsconfig.json ./
+COPY packages/shared/ packages/shared/
+COPY apps/web/ apps/web/
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3001
+ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
+WORKDIR /app/apps/web
+CMD ["npx", "next", "dev", "--port", "3001"]
+
+# ---------------------------------------------------------------------------
 # Production: standalone output + guaranteed node_modules
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS production
