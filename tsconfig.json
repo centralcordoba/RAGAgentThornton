@@ -24,8 +24,7 @@
   "references": [
     { "path": "packages/shared" },
     { "path": "packages/ai-core" },
-    { "path": "apps/api" },
-    { "path": "apps/web" }
+    { "path": "apps/api" }
   ],
-  "exclude": ["node_modules", "dist", ".next"]
+  "exclude": ["node_modules", "dist", ".next", "apps/web", "scripts", "**/scripts", "**/tests", "vitest.config.ts"]
 }
