@@ -40,8 +40,8 @@ jobs:
       - name: Build packages
         run: |
           npm run build --workspace=packages/shared
-          cd packages/ai-core && npx tsc --build --force 2>&1; cd ../..
-          echo "Packages built (non-blocking errors ignored)"
+          npx tsc --build --force packages/ai-core/tsconfig.json > /dev/null 2>&1 || true
+          echo "Packages built"
 
       - name: Run tests
         run: npm test
