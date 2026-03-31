@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build packages
+        run: npm run build --workspace=packages/shared --workspace=packages/ai-core
+
       - name: Typecheck
         run: npm run typecheck
 
