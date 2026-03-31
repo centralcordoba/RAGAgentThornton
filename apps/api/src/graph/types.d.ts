@@ -55,4 +55,3 @@ export interface AffectedClient {
     readonly matchedCompanyType: string;
     readonly matchedObligations: readonly string[];
 }
-//# sourceMappingURL=types.d.ts.map
