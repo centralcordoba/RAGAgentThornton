@@ -8,6 +8,7 @@ import './globals.css';
 import { Sidebar } from '@/components/ui/Sidebar';
 import { Header } from '@/components/ui/Header';
 import { ChatProvider } from '@/components/chat/ChatProvider';
+import { SplashScreen } from '@/components/ui/SplashScreen';
 
 export const metadata: Metadata = {
   title: 'Grant Thornton — Regulatory Monitoring',
@@ -31,6 +32,8 @@ export default function RootLayout({
             </main>
           </div>
         </div>
+        {/* Splash screen — first load only */}
+        <SplashScreen />
         {/* Global chat panel — available on all pages */}
         <ChatProvider />
       </body>

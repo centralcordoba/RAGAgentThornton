@@ -68,6 +68,25 @@
   animation: fadeIn 0.3s ease-out forwards;
 }
 
+/* Splash screen */
+@keyframes splash-dot {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes splash-ring {
+  from { opacity: 0; transform: scale(0.6); }
+  50% { opacity: 0.4; }
+  to { opacity: 0; transform: scale(1.6); }
+}
+@keyframes splash-text {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes splash-bar {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
 /* FullCalendar overrides */
 .fullcalendar-container .fc {
   font-family: inherit;
