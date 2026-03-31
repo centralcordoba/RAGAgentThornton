@@ -53,10 +53,9 @@ CMD ["npx", "tsx", "watch", "apps/api/src/server.ts"]
 # ---------------------------------------------------------------------------
 # Production: minimal runtime
 # ---------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS production
+FROM node:20-alpine AS production
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends curl openssl ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
+RUN apk add --no-cache libc6-compat curl openssl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 
