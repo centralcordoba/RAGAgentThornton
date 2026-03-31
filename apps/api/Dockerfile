@@ -40,7 +40,7 @@ RUN npx tsc --build --force apps/api/tsconfig.json 2>&1; \
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS production
 WORKDIR /app
-RUN apk add --no-cache libc6-compat curl && \
+RUN apk add --no-cache libc6-compat curl openssl && \
     addgroup --system --gid 1001 regwatch && \
     adduser --system --uid 1001 regwatch
 

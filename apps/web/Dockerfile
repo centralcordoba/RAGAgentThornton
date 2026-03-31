@@ -24,7 +24,9 @@ RUN npm ci --workspace=@regwatch/web --workspace=@regwatch/shared
 FROM base AS builder
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:3000
+ARG NEXT_PUBLIC_DEV_TOKEN=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_DEV_TOKEN=${NEXT_PUBLIC_DEV_TOKEN}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY tsconfig.json ./
@@ -45,7 +47,7 @@ RUN apk add --no-cache curl && \
 # Copy standalone output
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/standalone ./
 # Copy public assets and static files
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=regwatch:regwatch /app/apps/web/.next/static ./.next/static
 # Ensure node_modules exist (standalone tracing misses deps in monorepo hoisted setup)
 COPY --from=deps --chown=regwatch:regwatch /app/node_modules ./node_modules

@@ -184,7 +184,7 @@ export function ImpactHeatmap() {
 
             {/* Rows — areas */}
             <tbody>
-              {activeAreas.map((area) => (
+              {activeAreas.map((area, rowIndex) => (
                 <tr key={area}>
                   <td className="p-2 text-xs font-medium text-gray-600 whitespace-nowrap">
                     {area}
@@ -193,6 +193,7 @@ export function ImpactHeatmap() {
                     const cell = getCell(jur, area);
                     const score = cell?.score ?? 0;
                     const isHovered = hoveredCell?.jurisdiction === jur && hoveredCell?.area === area;
+                    const tooltipBelow = rowIndex === 0;
 
                     return (
                       <td key={`${jur}-${area}`} className="p-1.5">
@@ -224,11 +225,17 @@ export function ImpactHeatmap() {
 
                           {/* Tooltip on hover */}
                           {isHovered && cell?.topChange && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-gray-900 text-white text-xs rounded-lg p-2.5 shadow-lg z-20 pointer-events-none">
+                            <div className={`absolute left-1/2 -translate-x-1/2 w-44 bg-gray-900 text-white text-[11px] rounded-lg px-2 py-1.5 shadow-lg z-20 pointer-events-none ${
+                              tooltipBelow ? 'top-full mt-2' : 'bottom-full mb-2'
+                            }`}>
                               <p className="font-medium line-clamp-2">{cell.topChange}</p>
-                              <p className="text-gray-400 mt-1">{cell.changeCount} cambios detectados</p>
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
-                                <div className="border-4 border-transparent border-t-gray-900" />
+                              <p className="text-gray-400 mt-0.5">{cell.changeCount} cambios</p>
+                              <div className={`absolute left-1/2 -translate-x-1/2 ${
+                                tooltipBelow ? 'bottom-full mb-px' : 'top-full -mt-px'
+                              }`}>
+                                <div className={`border-4 border-transparent ${
+                                  tooltipBelow ? 'border-b-gray-900' : 'border-t-gray-900'
+                                }`} />
                               </div>
                             </div>
                           )}

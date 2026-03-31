@@ -23,7 +23,7 @@ interface RegulationFiltersProps {
   readonly resultCount: number;
 }
 
-const COUNTRIES = ['US', 'AR', 'BR', 'MX', 'ES', 'EU', 'SG'] as const;
+const COUNTRIES = ['US', 'AR', 'BR', 'EU', 'SG'] as const;
 const AREAS = ['fiscal', 'labor', 'corporate', 'securities', 'banking', 'data-protection', 'aml'] as const;
 const IMPACT_LEVELS = ['HIGH', 'MEDIUM', 'LOW'] as const;
 
